@@ -3,37 +3,85 @@
 <head>
     <title>Upload Shapefile ZIP</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+
     <style>
-        body{font-family:Arial;background:#f3e5f5;padding:50px;text-align:center}
-        h1{color:#6a1b9a}
-        input,button{padding:18px 40px;font-size:20px;margin:15px;border-radius:12px}
-        button{background:#9c27b0;color:white;border:none;cursor:pointer;font-weight:bold}
-        button:hover{background:#7b1fa2}
-        #msg{margin:30px;font-size:24px;font-weight:bold}
+        body{
+            font-family:Arial;
+            background:#f3e5f5;
+            padding:50px;
+            text-align:center
+        }
+        h1{
+            color:#6a1b9a
+        }
+        input,button{
+            padding:18px 40px;
+            font-size:20px;
+            margin:15px;
+            border-radius:12px
+        }
+        button{
+            background:#9c27b0;
+            color:white;
+            border:none;
+            cursor:pointer;
+            font-weight:bold
+        }
+        button:hover{
+            background:#7b1fa2
+        }
+        #msg{
+            margin:30px;
+            font-size:24px;
+            font-weight:bold
+        }
     </style>
 </head>
+
 <body>
-    <h1>Upload District / Taluka / Village (ZIP)</h1>
+
+    <h1>Upload District / Taluka / Village Shapefile (ZIP)</h1>
+
     <input type="file" id="f" accept=".zip"><br><br>
+
     <button onclick="upload()">UPLOAD NOW</button>
+
     <div id="msg"></div>
+
     <hr>
-    <a href="/" style="font-size:22px;color:#9c27b0;text-decoration:none">Open Live Map</a>
+
+    <a href="/" style="font-size:22px;color:#9c27b0;text-decoration:none">
+        Open Live Map
+    </a>
 
     <script>
-    async function upload(){
+    async function upload() {
         const file = document.getElementById('f').files[0];
-        if(!file){ alert("Please select a ZIP file"); return; }
-        const fd = new FormData();
-        fd.append('file', file);                     // ← matches 'file' in Flask
+
+        if (!file) {
+            alert("Please select a ZIP file");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);  // must match Flask request.files['file']
+
         document.getElementById('msg').innerHTML = "Uploading...";
 
-        const r = await fetch('/upload_file', {method:'POST', body:fd});
-        const j = await r.json();
-        document.getElementById('msg').innerHTML = 
-            r.ok ? "<span style='color:green'>SUCCESS! Added: <b>"+j.layer+"</b></span>"
-                 : "<span style='color:red'>ERROR: "+j.error+"</span>";
+        // ✔ CORRECT Flask endpoint
+        const response = await fetch('/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        document.getElementById('msg').innerHTML =
+            response.ok
+            ? `<span style="color:green">SUCCESS! Added Layer: <b>${data.layer}</b></span>`
+            : `<span style="color:red">ERROR: ${data.error}</span>`;
     }
     </script>
+
 </body>
 </html>
