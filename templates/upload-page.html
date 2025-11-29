@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Upload Shapefile</title>
+<style>
+body{font-family:Arial;background:#fffde7;padding:60px;text-align:center}
+h1{color:#f57f17}input,button{padding:12px 20px;font-size:16px;margin:10px;border-radius:8px}
+button{background:#ff9800;color:white;border:none;cursor:pointer;font-weight:bold}
+#msg{margin-top:20px;font-size:18px}
+</style>
+</head>
+<body>
+<h1>Upload Shapefile (ZIP)</h1>
+<input type="file" id="f" accept=".zip"><br>
+<button id="btn">Upload</button>
+<div id="msg"></div>
+<hr>
+<a href="/">Open Map</a>
+
+
+<script>
+const btn = document.getElementById('btn');
+btn.onclick = async () => {
+const file = document.getElementById('f').files[0];
+if(!file){ alert('Select a ZIP file'); return }
+const fd = new FormData(); fd.append('file', file);
+document.getElementById('msg').textContent = 'Uploading...';
+try{
+const res = await fetch('/upload', {method:'POST', body: fd});
+const j = await res.json();
+if(res.ok){
+document.getElementById('msg').innerHTML = `<span style='color:green'>Uploaded: <b>${j.layer}</b></span>`;
+} else {
+document.getElementById('msg').innerHTML = `<span style='color:red'>Error: ${j.error}</span>`;
+}
+} catch(e){
+document.getElementById('msg').textContent = 'Upload failed: '+e;
+}
+}
+</script>
+</body>
+</html>
