@@ -1,100 +1,105 @@
 import os
-import zipfile
 import tempfile
+import zipfile
 import shutil
-import random
+from flask import Flask, request, jsonify, render_template
+from flask_cors import CORS
 import geopandas as gpd
-from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
+CORS(app)
 
-layers = {}
-bounds_global = None
+# Store all layers in memory
+layers = {}   # {layer_name : { "geojson": {}, "color": "", "opacity": 1 }}
 
-
-def random_color():
-    return "#{:06x}".format(random.randint(0, 0xFFFFFF))
-
-
-# ---------------- HOME PAGE -----------------
-
+# ---------- HOME PAGE (MAP) ----------
 @app.route("/")
-def home():
+def index():
     return render_template("map.html")
 
 
-# --------------- UPLOAD PAGE ----------------
-
+# ---------- UPLOAD PAGE ----------
 @app.route("/upload_page")
 def upload_page():
     return render_template("upload_page.html")
 
 
-# --------------- SHAPEFILE UPLOAD API ---------------
-
+# ---------- MULTIPLE ZIP UPLOAD API ----------
 @app.route("/upload", methods=["POST"])
-def upload_shapefile():
-    global bounds_global
+def upload():
+    if "files" not in request.files:
+        return jsonify({"error": "No ZIP files received!"}), 400
 
-    try:
-        if 'file' not in request.files:
-            return jsonify({"error": "No file received"}), 400
+    uploaded_files = request.files.getlist("files")
 
-        file = request.files['file']
-        if file.filename == "":
-            return jsonify({"error": "No file selected"}), 400
+    uploaded = []
+    failed = []
 
-        # Read ZIP bytes safely
-        zip_bytes = file.read()
+    for file in uploaded_files:
+
+        # Accept ONLY zip files
+        if not file.filename.lower().endswith(".zip"):
+            failed.append(file.filename)
+            continue
+
+        # Create temp folder
         temp_dir = tempfile.mkdtemp()
 
-        zip_path = os.path.join(temp_dir, "upload.zip")
-        with open(zip_path, "wb") as f:
-            f.write(zip_bytes)
+        try:
+            # Save uploaded ZIP
+            zip_path = os.path.join(temp_dir, file.filename)
+            file.save(zip_path)
 
-        # Extract files
-        with zipfile.ZipFile(zip_path, 'r') as z:
-            z.extractall(temp_dir)
+            # Extract ZIP
+            with zipfile.ZipFile(zip_path, "r") as z:
+                z.extractall(temp_dir)
 
-        # Find .shp file
-        shp_files = [f for f in os.listdir(temp_dir) if f.lower().endswith(".shp")]
-        if not shp_files:
-            shutil.rmtree(temp_dir)
-            return jsonify({"error": "ZIP does not contain a .shp file"}), 400
+            # Find .shp file inside ZIP
+            shp_file = None
+            for f in os.listdir(temp_dir):
+                if f.endswith(".shp"):
+                    shp_file = os.path.join(temp_dir, f)
+                    break
 
-        shp_path = os.path.join(temp_dir, shp_files[0])
+            if not shp_file:
+                failed.append(file.filename)
+                continue
 
-        # Read shapefile → GeoJSON
-        gdf = gpd.read_file(shp_path)
-        gdf = gdf.to_crs(4326)
+            # Read using GeoPandas
+            gdf = gpd.read_file(shp_file)
 
-        name = os.path.splitext(shp_files[0])[0]
-        color = random_color()
+            # Convert to GeoJSON
+            geojson_data = gdf.to_json()
 
-        layers[name] = {
-            "geojson": gdf.__geo_interface__,
-            "color": color
-        }
+            # Layer name → filename without extension
+            layer_name = os.path.splitext(file.filename)[0]
 
-        b = gdf.total_bounds
-        bounds_global = [[b[1], b[0]], [b[3], b[2]]]
+            # Save layer
+            layers[layer_name] = {
+                "geojson": geojson_data,
+                "color": "#FF0000",
+                "opacity": 0.7,
+            }
 
-        shutil.rmtree(temp_dir)
-        return jsonify({"status": "success", "layer": name, "color": color})
+            uploaded.append(layer_name)
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        except Exception as e:
+            print("ERROR:", e)
+            failed.append(file.filename)
+
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    return jsonify({"uploaded": uploaded, "failed": failed})
 
 
-# -------------- SEND LAYERS TO MAP --------------
-
+# ---------- API: GET ALL LAYERS ----------
 @app.route("/layers")
 def get_layers():
-    return jsonify({"layers": layers, "bounds": bounds_global})
+    return jsonify(layers)
 
 
-# ---------------- RUN FOR RENDER --------------------
-
+# ---------- REQUIRED FOR RENDER.COM ----------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
