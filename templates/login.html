@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Login</title>
+    <style>
+        body { font-family: Arial; text-align: center; padding: 50px; }
+        input { padding: 12px; margin: 10px; font-size: 18px; }
+        button { padding: 12px 25px; background: purple; color: #fff; border: none; }
+    </style>
+</head>
+<body>
+    <h2>Admin Login</h2>
+    <form id="loginForm">
+        <input type="text" id="user" placeholder="Username"><br>
+        <input type="password" id="pass" placeholder="Password"><br>
+        <button type="button" onclick="login()">Login</button>
+    </form>
+
+<script>
+async function login() {
+    const u = document.getElementById("user").value;
+    const p = document.getElementById("pass").value;
+
+    let res = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: u, password: p })
+    });
+
+    let data = await res.json();
+
+    if (res.ok) {
+        window.location.href = "/";
+    } else {
+        alert(data.error);
+    }
+}
+</script>
+
+</body>
+</html>
