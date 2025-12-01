@@ -2,6 +2,7 @@ import os
 import tempfile
 import zipfile
 import shutil
+import random
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import geopandas as gpd
@@ -9,8 +10,9 @@ import geopandas as gpd
 app = Flask(__name__)
 CORS(app)
 
-# Store all layers in memory
-layers = {}   # {layer_name : { "geojson": {}, "color": "", "opacity": 1 }}
+# Store layers in memory
+layers = {}  # layer_name → {geojson, color, opacity}
+
 
 # ---------- HOME PAGE (MAP) ----------
 @app.route("/")
@@ -28,25 +30,20 @@ def upload_page():
 @app.route("/upload", methods=["POST"])
 def upload():
     if "files" not in request.files:
-        return jsonify({"error": "No ZIP files received!"}), 400
+        return jsonify({"error": "No files received!"}), 400
 
     uploaded_files = request.files.getlist("files")
-
     uploaded = []
     failed = []
 
     for file in uploaded_files:
-
-        # Accept ONLY zip files
         if not file.filename.lower().endswith(".zip"):
             failed.append(file.filename)
             continue
 
-        # Create temp folder
         temp_dir = tempfile.mkdtemp()
 
         try:
-            # Save uploaded ZIP
             zip_path = os.path.join(temp_dir, file.filename)
             file.save(zip_path)
 
@@ -57,7 +54,7 @@ def upload():
             # Find .shp file inside ZIP
             shp_file = None
             for f in os.listdir(temp_dir):
-                if f.endswith(".shp"):
+                if f.lower().endswith(".shp"):
                     shp_file = os.path.join(temp_dir, f)
                     break
 
@@ -65,20 +62,21 @@ def upload():
                 failed.append(file.filename)
                 continue
 
-            # Read using GeoPandas
+            # Read shapefile
             gdf = gpd.read_file(shp_file)
 
-            # Convert to GeoJSON
-            geojson_data = gdf.to_json()
+            # Convert to WGS84 + GeoJSON dict
+            geojson_dict = gdf.to_crs("EPSG:4326").__geo_interface__
 
-            # Layer name → filename without extension
             layer_name = os.path.splitext(file.filename)[0]
 
-            # Save layer
+            # Random color
+            color = "#{:06x}".format(random.randint(0, 0xFFFFFF))
+
             layers[layer_name] = {
-                "geojson": geojson_data,
-                "color": "#FF0000",
-                "opacity": 0.7,
+                "geojson": geojson_dict,
+                "color": color,
+                "opacity": 0.7
             }
 
             uploaded.append(layer_name)
@@ -86,20 +84,27 @@ def upload():
         except Exception as e:
             print("ERROR:", e)
             failed.append(file.filename)
-
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
     return jsonify({"uploaded": uploaded, "failed": failed})
 
 
-# ---------- API: GET ALL LAYERS ----------
+# ---------- SEND ALL LAYERS TO MAP ----------
 @app.route("/layers")
 def get_layers():
-    return jsonify(layers)
+    # Optionally compute bounds for first layer
+    bounds = None
+    if layers:
+        first_layer = next(iter(layers.values()))
+        gdf = gpd.GeoDataFrame.from_features(first_layer["geojson"]["features"], crs="EPSG:4326")
+        b = gdf.total_bounds  # minx, miny, maxx, maxy
+        bounds = [[b[1], b[0]], [b[3], b[2]]]  # Leaflet [southWest, northEast]
+
+    return jsonify({"layers": layers, "bounds": bounds})
 
 
-# ---------- REQUIRED FOR RENDER.COM ----------
+# ---------- RUN SERVER ----------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, debug=True)
