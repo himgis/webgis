@@ -1,165 +1,166 @@
 import os
-import tempfile
 import zipfile
+import tempfile
 import shutil
 import random
-from flask import Flask, request, jsonify, render_template, session
-from flask_cors import CORS
+import string
 import geopandas as gpd
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session
+from flask_cors import CORS
 
 app = Flask(__name__)
-app.secret_key = "YOUR_SECRET_KEY"   # change this
+app.secret_key = "MY_SECRET_KEY_123"   # Change for security
+
 CORS(app)
 
+UPLOAD_FOLDER = "layers"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# -----------------------------
+#  ADMIN LOGIN CREDENTIALS
+# -----------------------------
 ADMIN_USER = "admin"
 ADMIN_PASS = "1234"
 
-layers = {}  # Stores all layers: name → {geojson, color, opacity}
+
+# -----------------------------
+#   AUTH CHECK DECORATOR
+# -----------------------------
+def admin_required(func):
+    def wrapper(*args, **kwargs):
+        if not session.get("admin"):
+            return redirect(url_for("login"))
+        return func(*args, **kwargs)
+    wrapper.__name__ = func.__name__
+    return wrapper
 
 
-# ---------------- Login Page ----------------
-@app.route("/login", methods=["GET"])
-def login_page():
+# -----------------------------
+#  LOGIN PAGE
+# -----------------------------
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        user = request.form.get("username")
+        pw = request.form.get("password")
+
+        if user == ADMIN_USER and pw == ADMIN_PASS:
+            session["admin"] = True
+            return redirect("/admin")
+
+        return render_template("login.html", error="Invalid credentials")
+
     return render_template("login.html")
 
 
-# ---------------- Login API ----------------
-@app.route("/login", methods=["POST"])
-def login_api():
-    data = request.get_json()
-
-    if data["username"] == ADMIN_USER and data["password"] == ADMIN_PASS:
-        session["admin"] = True
-        return jsonify({"message": "Logged in"})
-    else:
-        return jsonify({"error": "Invalid username or password"}), 401
-
-
-# ---------------- Logout ----------------
+# -----------------------------
+#  LOGOUT
+# -----------------------------
 @app.route("/logout")
 def logout():
-    session.pop("admin", None)
-    return jsonify({"message": "Logged out"})
+    session.clear()
+    return redirect("/login")
 
 
-# ---------------- Home / Map ----------------
-@app.route("/")
-def index():
-    is_admin = session.get("admin", False)
-    return render_template("map.html", is_admin=is_admin)
+# -----------------------------
+#  ADMIN DASHBOARD
+# -----------------------------
+@app.route("/admin")
+@admin_required
+def admin():
+    layers = [f.replace(".geojson", "") for f in os.listdir(UPLOAD_FOLDER)]
+    return render_template("admin.html", layers=layers)
 
 
-# ---------------- Upload Page ----------------
-@app.route("/upload_page")
-def upload_page():
-    if not session.get("admin"):
-        return "Unauthorized", 403
-
-    return render_template("upload_page.html")
-
-
-# ---------------- Upload Shapefiles (Admin Only) ----------------
+# -----------------------------
+#  HANDLE SHAPEFILE UPLOAD
+# -----------------------------
 @app.route("/upload", methods=["POST"])
-def upload_shapefiles():
+@admin_required
+def upload_file():
+    file = request.files.get("file")
 
-    if not session.get("admin"):
-        return jsonify({"error": "Only admin can upload!"}), 403
+    if not file:
+        return "No file uploaded", 400
 
-    if "files" not in request.files:
-        return jsonify({"error": "No files received!"}), 400
+    if not file.filename.endswith(".zip"):
+        return "Upload a zipped shapefile", 400
 
-    files = request.files.getlist("files")
-    uploaded = []
-    failed = []
+    temp_dir = tempfile.mkdtemp()
+    zip_path = os.path.join(temp_dir, file.filename)
+    file.save(zip_path)
 
-    for file in files:
-        if not file.filename.lower().endswith(".zip"):
-            failed.append(file.filename)
-            continue
+    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+        zip_ref.extractall(temp_dir)
 
-        temp_dir = tempfile.mkdtemp()
-        try:
-            zip_path = os.path.join(temp_dir, file.filename)
-            file.save(zip_path)
+    shp_file = None
+    for f in os.listdir(temp_dir):
+        if f.endswith(".shp"):
+            shp_file = os.path.join(temp_dir, f)
+            break
 
-            with zipfile.ZipFile(zip_path, "r") as z:
-                z.extractall(temp_dir)
+    if not shp_file:
+        shutil.rmtree(temp_dir)
+        return "Shapefile not found in ZIP", 400
 
-            shp_file = None
-            for root, dirs, files2 in os.walk(temp_dir):
-                for f in files2:
-                    if f.lower().endswith(".shp"):
-                        shp_file = os.path.join(root, f)
-                        break
+    # Read SHP → GeoJSON
+    gdf = gpd.read_file(shp_file)
+    name = os.path.splitext(os.path.basename(shp_file))[0]
 
-            if shp_file is None:
-                failed.append(file.filename)
-                continue
+    # Save GeoJSON
+    output_path = os.path.join(UPLOAD_FOLDER, name + ".geojson")
+    gdf.to_file(output_path, driver="GeoJSON")
 
-            gdf = gpd.read_file(shp_file)
-            geojson_dict = gdf.to_crs("EPSG:4326").__geo_interface__
+    shutil.rmtree(temp_dir)
+    return redirect("/admin")
 
-            layer_name = os.path.splitext(file.filename)[0]
-            color = "#{:06x}".format(random.randint(0, 0xFFFFFF))
 
-            layers[layer_name] = {
-                "geojson": geojson_dict,
-                "color": color,
-                "opacity": 0.7
+# -----------------------------
+#  DELETE LAYER 
+# -----------------------------
+@app.route("/delete/<name>", methods=["GET"])
+@admin_required
+def delete_layer(name):
+    path = os.path.join(UPLOAD_FOLDER, name + ".geojson")
+    if os.path.exists(path):
+        os.remove(path)
+    return redirect("/admin")
+
+
+# -----------------------------
+#  LIST LAYERS FOR MAP.HTML
+# -----------------------------
+@app.route("/layers")
+def list_layers():
+    layers = {}
+    bounds = None
+
+    for f in os.listdir(UPLOAD_FOLDER):
+        if f.endswith(".geojson"):
+            path = os.path.join(UPLOAD_FOLDER, f)
+            gdf = gpd.read_file(path)
+            name = f.replace(".geojson", "")
+
+            color = "#" + "".join(random.choice("0123456789ABCDEF") for _ in range(6))
+
+            layers[name] = {
+                "geojson": gdf.__geo_interface__,
+                "color": color
             }
 
-            uploaded.append(layer_name)
+            if bounds is None:
+                bounds = gdf.total_bounds
 
-        except Exception as e:
-            print("ERROR:", file.filename, e)
-            failed.append(file.filename)
-        finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-
-    return jsonify({"uploaded": uploaded, "failed": failed})
+    return jsonify({"layers": layers, "bounds": bounds})
 
 
-# ---------------- Delete Layer (Admin Only) ----------------
-@app.route("/delete/<layer_name>", methods=["DELETE"])
-def delete_layer(layer_name):
-
-    if not session.get("admin"):
-        return jsonify({"error": "Only admin can delete!"}), 403
-
-    if layer_name in layers:
-        layers.pop(layer_name)
-        return jsonify({"message": "Deleted"})
-    else:
-        return jsonify({"error": "Layer not found"}), 404
-
-
-# ---------------- Send Layers to Frontend ----------------
-@app.route("/layers")
-def get_layers():
-    is_admin = session.get("admin", False)
-
-    final_bounds = None
-    if layers:
-        all_bounds = []
-        for lyr in layers.values():
-            gdf = gpd.GeoDataFrame.from_features(lyr["geojson"]["features"], crs="EPSG:4326")
-            b = gdf.total_bounds
-            all_bounds.append(b)
-
-        minx = min(b[0] for b in all_bounds)
-        miny = min(b[1] for b in all_bounds)
-        maxx = max(b[2] for b in all_bounds)
-        maxy = max(b[3] for b in all_bounds)
-
-        final_bounds = [[miny, minx], [maxy, maxx]]
-
-    return jsonify({
-        "is_admin": is_admin,
-        "layers": layers,
-        "bounds": final_bounds
-    })
+# -----------------------------
+#  PUBLIC MAP PAGE
+# -----------------------------
+@app.route("/")
+def map_page():
+    return render_template("map.html")
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(debug=True)
