@@ -1,190 +1,315 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8">
-<title>Web GIS</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.81.1/dist/L.Control.Locate.min.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.81.1/dist/L.Control.Locate.min.css"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+    <meta charset="utf-8">
+    <title>Web GIS - Layers Visibility Bottom-Left</title>
 
-<style>
-body,html{margin:0;padding:0;height:100%}
-#map{width:100%;height:100vh;position:relative}
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-.style-panel{position:absolute;top:10px;right:10px;background:white;padding:15px;border-radius:8px;
-box-shadow:0 2px 10px rgba(0,0,0,0.3);z-index:1000;width:280px;font-family:Roboto,sans-serif;}
+    <script src="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.81.1/dist/L.Control.Locate.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.81.1/dist/L.Control.Locate.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
 
-.layer-panel{position:absolute;bottom:10px;left:10px;background:white;padding:12px;border-radius:8px;
-box-shadow:0 2px 10px rgba(0,0,0,0.3);z-index:1000;width:260px;max-height:70vh;overflow-y:auto;
-font-family:Roboto,sans-serif;font-size:14px;}
+    <style>
+        body, html { margin:0; padding:0; height:100% }
+        #map { width:100%; height:100vh; position:relative }
 
-.panel h3{margin:0 0 10px 0;background:#4285f4;color:white;padding:8px 12px;border-radius:5px;font-size:15px}
-.slider{margin:12px 0}
-label{display:block;margin-bottom:5px;font-weight:bold;font-size:14px}
-input[type=range]{width:100%}
-.val{font-size:12px;text-align:right;margin-top:3px;color:#555}
+        /* Style Panel - Top Right */
+        .style-panel {
+            position:absolute; top:10px; right:10px; background:white; padding:15px; border-radius:8px;
+            box-shadow:0 2px 10px rgba(0,0,0,0.3); z-index:1000; width:280px; font-family:Roboto,sans-serif;
+        }
 
-.layer-item{padding:8px 5px;border-bottom:1px solid #eee;display:flex;align-items:center;user-select:none;}
-.layer-item input{margin-right:10px;cursor:pointer}
-.layer-item label{margin:0;cursor:pointer;font-weight:500}
-.layer-item:last-child{border-bottom:none}
-.layer-item button{margin-left:auto; cursor:pointer;}
-</style>
+        /* Layers Panel - Bottom Left */
+        .layer-panel {
+            position:absolute; bottom:10px; left:10px; background:white; padding:12px; border-radius:8px;
+            box-shadow:0 2px 10px rgba(0,0,0,0.3); z-index:1000; width:260px; max-height:70vh;
+            overflow-y:auto; font-family:Roboto,sans-serif; font-size:14px;
+        }
+
+        .panel h3 { margin:0 0 10px 0; background:#4285f4; color:white; padding:8px 12px; border-radius:5px; font-size:15px }
+        .slider { margin:12px 0 }
+        label { display:block; margin-bottom:5px; font-weight:bold; font-size:14px }
+        input[type=range]{ width:100% }
+        .val { font-size:12px; text-align:right; margin-top:3px; color:#555 }
+
+        .layer-item {
+            padding:8px 5px; border-bottom:1px solid #eee; display:flex; align-items:center;
+            user-select:none;
+        }
+        .layer-item input { margin-right:10px; cursor:pointer }
+        .layer-item label { margin:0; cursor:pointer; font-weight:500 }
+        .layer-item:last-child { border-bottom:none }
+    </style>
 </head>
 <body>
+
 <div id="map"></div>
+
+<!-- ⭐ ADMIN PANEL (Hidden unless logged in) -->
+<div id="adminPanel" style="display:none; position:absolute; top:10px; left:10px; z-index:1500;">
+    <a href="/upload_page" 
+       style="padding:10px 15px; background:#1976d2; color:white; border-radius:6px; text-decoration:none;">
+       Upload Layer
+    </a>
+
+    <button onclick="openDeletePopup()" 
+            style="padding:10px 15px; background:#d32f2f; color:white; border:none; border-radius:6px; cursor:pointer; margin-left:10px;">
+        Delete Layer
+    </button>
+</div>
 
 <!-- Style Panel -->
 <div class="panel style-panel">
-<h3>Layer Style</h3>
-<div class="slider">
-<label>Line Weight: <span id="wVal">3</span> px</label>
-<input type="range" id="weight" min="1" max="10" value="3">
-</div>
-<div class="slider">
-<label>Fill Opacity: <span id="oVal">0.5</span></label>
-<input type="range" id="opacity" min="0" max="1" step="0.05" value="0.5">
-</div>
-<div class="slider">
-<label>Point Size: <span id="rVal">8</span> px</label>
-<input type="range" id="radius" min="4" max="20" value="8">
-</div>
+    <h3>Layer Style</h3>
+    <div class="slider">
+        <label>Line Weight: <span id="wVal">3</span> px</label>
+        <input type="range" id="weight" min="1" max="10" value="3">
+    </div>
+    <div class="slider">
+        <label>Fill Opacity: <span id="oVal">0.5</span></label>
+        <input type="range" id="opacity" min="0" max="1" step="0.05" value="0.5">
+    </div>
+    <div class="slider">
+        <label>Point Size: <span id="rVal">8</span> px</label>
+        <input type="range" id="radius" min="4" max="20" value="8">
+    </div>
 </div>
 
 <!-- Layers Panel -->
 <div class="panel layer-panel">
-<h3>Layers</h3>
-<div id="layerList"><em>Loading layers...</em></div>
+    <h3>Layers</h3>
+    <div id="layerList">
+        <em>Loading layers...</em>
+    </div>
 </div>
 
+<!-- ⭐ DELETE POPUP -->
+<div id="deletePopup"
+     style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:2000;">
+    <div style="background:white; padding:20px; width:300px; margin:200px auto; border-radius:10px; text-align:center;">
+        <h3>Select Layer to Delete</h3>
+
+        <select id="deleteSelect" style="padding:10px; width:100%; margin-bottom:15px;"></select>
+
+        <button onclick="deleteLayer()" style="background:#d32f2f; padding:10px 20px; color:white; border:none;">
+            Delete
+        </button>
+
+        <button onclick="closeDeletePopup()" style="margin-left:10px; padding:10px 20px;">
+            Cancel
+        </button>
+    </div>
+</div>
+
+
 <script>
+/* ==============================================================
+   ADMIN LOGIN CHECK
+============================================================== */
+
+const isAdmin = localStorage.getItem("isAdmin") === "true";
+if (isAdmin) {
+    document.getElementById("adminPanel").style.display = "block";
+}
+
+/* ==============================================================
+   MAP INITIALIZATION
+============================================================== */
+
 const map = L.map('map').setView([22.5, 73.0], 7);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
 
-// Current Location
-L.control.locate({position:'topleft',icon:'fa fa-location-crosshairs fa-2x',setView:'untilPanOrZoom',
-locateOptions:{enableHighAccuracy:true,watch:true},markerStyle:{radius:10,color:'#3388ff',fillColor:'#3388ff'},
-circleStyle:{color:'#3388ff',opacity:0.5,fillOpacity:0.15}}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
 
-// Admin flag
-window.isAdmin = false;
-fetch("/is_admin").then(r=>r.json()).then(d=>window.isAdmin=d.admin);
+L.control.locate({
+    position: 'topleft',
+    icon: 'fa fa-location-crosshairs fa-2x',
+    setView: 'untilPanOrZoom',
+    locateOptions: { enableHighAccuracy: true, watch: true }
+}).addTo(map);
 
-const styleConfig={weight:3,fillOpacity:0.5,radius:8};
-let allLayers={}; let layerVisibility={};
+/* ==============================================================
+   GLOBAL STYLE SETTINGS
+============================================================== */
 
-function updateDisplays(){
-document.getElementById('wVal').textContent = styleConfig.weight;
-document.getElementById('oVal').textContent = styleConfig.fillOpacity.toFixed(2);
-document.getElementById('rVal').textContent = styleConfig.radius;
+const styleConfig = { weight: 3, fillOpacity: 0.5, radius: 8 };
+let allLayers = {};
+let layerVisibility = {};
+
+function updateDisplays() {
+    document.getElementById('wVal').textContent = styleConfig.weight;
+    document.getElementById('oVal').textContent = styleConfig.fillOpacity.toFixed(2);
+    document.getElementById('rVal').textContent = styleConfig.radius;
 }
 
-function applyGlobalStyle(){
-Object.entries(allLayers).forEach(([name, layer])=>{
-if(layerVisibility[name]!==false){
-layer.eachLayer(l=>{
-const color=l.feature?.properties?._color || '#3388ff';
-const newStyle={color,weight:styleConfig.weight,fillColor:color,fillOpacity:styleConfig.fillOpacity};
-if(l.setStyle) l.setStyle(newStyle);
-if(l.setRadius) l.setRadius(styleConfig.radius);
-});
-}
-});
+function applyGlobalStyle() {
+    Object.entries(allLayers).forEach(([name, layer]) => {
+        if (layerVisibility[name] !== false) {
+            layer.eachLayer(l => {
+                const color = l.feature?.properties?._color || '#3388ff';
+                const newStyle = { color, weight: styleConfig.weight, fillColor: color, fillOpacity: styleConfig.fillOpacity };
+                if (l.setStyle) l.setStyle(newStyle);
+                if (l.setRadius) l.setRadius(styleConfig.radius);
+            });
+        }
+    });
 }
 
-['weight','opacity','radius'].forEach(id=>{
-document.getElementById(id).oninput=e=>{
-styleConfig[id==='opacity'?'fillOpacity':id]=+e.target.value;
-updateDisplays();
-applyGlobalStyle();
-};
-});
-
-async function loadLayers(){
-try{
-const res=await fetch('/layers'); const data=await res.json();
-const currentNames=Object.keys(data.layers);
-
-// Remove deleted
-Object.keys(allLayers).forEach(name=>{
-if(!currentNames.includes(name)){
-map.removeLayer(allLayers[name]);
-delete allLayers[name];
-delete layerVisibility[name];
-}
+['weight','opacity','radius'].forEach(id => {
+    document.getElementById(id).oninput = e => {
+        styleConfig[id === 'opacity' ? 'fillOpacity' : id] = +e.target.value;
+        updateDisplays();
+        applyGlobalStyle();
+    };
 });
 
-// Add/update
-for(const [name, info] of Object.entries(data.layers)){
-const geojson=info.geojson; const color=info.color;
-geojson.features.forEach(f=>{if(!f.properties)f.properties={};f.properties._color=color;});
+/* ==============================================================
+   LOAD LAYERS FROM SERVER
+============================================================== */
 
-if(allLayers[name]){
-allLayers[name].clearLayers().addData(geojson);
-}else{
-const layer=L.geoJSON(geojson,{
-style:()=>({color,weight:styleConfig.weight,fillColor:color,fillOpacity:styleConfig.fillOpacity}),
-pointToLayer:(f,latlng)=>L.circleMarker(latlng,{radius:styleConfig.radius,color,fillColor:color,fillOpacity:styleConfig.fillOpacity,weight:styleConfig.weight}),
-onEachFeature:(f,l)=>{if(f.properties){
-let html='<table style="font-size:13px;width:100%">';
-for(const [k,v] of Object.entries(f.properties)){if(k!=='_color') html+=`<tr><td style="font-weight:bold;padding:4px">${k}</td><td style="padding:4px">${v??''}</td></tr>`;}
-html+='</table>'; l.bindPopup(html);
-}}
-});
+async function loadLayers() {
+    try {
+        const res = await fetch('/layers');
+        const data = await res.json();
 
-if(layerVisibility[name]!==false){layer.addTo(map); layerVisibility[name]=true;}
-allLayers[name]=layer;
-}
-}
+        const currentNames = Object.keys(data.layers);
 
-updateLayerCheckboxes(currentNames);
+        // Remove deleted
+        Object.keys(allLayers).forEach(name => {
+            if (!currentNames.includes(name)) {
+                map.removeLayer(allLayers[name]);
+                delete allLayers[name];
+                delete layerVisibility[name];
+            }
+        });
 
-if(data.bounds && Object.keys(allLayers).length>0){map.fitBounds(data.bounds);}
+        // Add new
+        for (const [name, info] of Object.entries(data.layers)) {
+            const geojson = info.geojson;
+            const color = info.color;
 
-}catch(e){console.error("Load failed:",e);}
-}
+            geojson.features.forEach(f => {
+                if (!f.properties) f.properties = {};
+                f.properties._color = color;
+            });
 
-function updateLayerCheckboxes(names){
-const container=document.getElementById('layerList'); container.innerHTML='';
-if(names.length===0){container.innerHTML='<em>No layers</em>'; return;}
+            if (allLayers[name]) {
+                allLayers[name].clearLayers().addData(geojson);
+            } else {
+                const layer = L.geoJSON(geojson, {
+                    style: () => ({ color, weight: styleConfig.weight, fillColor: color, fillOpacity: styleConfig.fillOpacity }),
+                    pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: styleConfig.radius, color, fillColor: color, fillOpacity: styleConfig.fillOpacity, weight: styleConfig.weight }),
+                    onEachFeature: (f, l) => {
+                        if (f.properties) {
+                            let html = '<table style="font-size:13px;width:100%">';
+                            for (const [k,v] of Object.entries(f.properties)) {
+                                if (k !== '_color') html += `<tr><td style="font-weight:bold;padding:4px">${k}</td><td style="padding:4px">${v??''}</td></tr>`;
+                            }
+                            html += '</table>';
+                            l.bindPopup(html);
+                        }
+                    }
+                });
+                if (layerVisibility[name] !== false) { layer.addTo(map); layerVisibility[name] = true; }
+                allLayers[name] = layer;
+            }
+        }
 
-names.forEach(name=>{
-const visible=layerVisibility[name]!==false;
-const color=allLayers[name]?.options?.style?.().color || '#3388ff';
+        updateLayerCheckboxes(currentNames);
 
-const div=document.createElement('div'); div.className='layer-item';
+        if (data.bounds && Object.keys(allLayers).length > 0) {
+            map.fitBounds(data.bounds);
+        }
 
-// Checkbox
-const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=visible;
-cb.onchange=()=>{layerVisibility[name]=cb.checked; cb.checked?map.addLayer(allLayers[name]):map.removeLayer(allLayers[name]);};
-
-const label=document.createElement('label'); label.textContent=name; label.style.color=color;
-
-div.appendChild(cb); div.appendChild(label);
-
-// Delete button for admin
-if(window.isAdmin){
-const btn=document.createElement('button'); btn.textContent="Delete";
-btn.style="margin-left:auto;color:white;background:red;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:12px;";
-btn.onclick=()=>deleteLayer(name);
-div.appendChild(btn);
-}
-
-container.appendChild(div);
-});
-}
-
-async function deleteLayer(name){
-if(!confirm("Delete layer: "+name+" ?")) return;
-const res=await fetch("/delete_layer",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name})});
-const data=await res.json();
-if(res.ok){alert("Deleted: "+name); loadLayers();} else {alert("Error: "+data.error);}
+    } catch (e) {
+        console.error("Load failed:", e);
+    }
 }
 
-// Refresh every 3 sec
-loadLayers(); setInterval(loadLayers,3000);
+function updateLayerCheckboxes(names) {
+    const container = document.getElementById('layerList');
+    container.innerHTML = '';
+
+    if (names.length === 0) {
+        container.innerHTML = '<em>No layers</em>';
+        return;
+    }
+
+    names.forEach(name => {
+        const visible = layerVisibility[name] !== false;
+        const color = "#3388ff";
+
+        const div = document.createElement('div');
+        div.className = 'layer-item';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = visible;
+        cb.onchange = () => {
+            layerVisibility[name] = cb.checked;
+            cb.checked ? map.addLayer(allLayers[name]) : map.removeLayer(allLayers[name]);
+        };
+
+        const label = document.createElement('label');
+        label.textContent = name;
+        label.style.color = color;
+
+        div.appendChild(cb);
+        div.appendChild(label);
+        container.appendChild(div);
+    });
+}
+
+loadLayers();
+setInterval(loadLayers, 3000);
+
+
+/* ==============================================================
+   DELETE LAYER FUNCTIONS
+============================================================== */
+
+function openDeletePopup() {
+    const select = document.getElementById("deleteSelect");
+    select.innerHTML = "";
+
+    Object.keys(allLayers).forEach(name => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        select.appendChild(opt);
+    });
+
+    document.getElementById("deletePopup").style.display = "block";
+}
+
+function closeDeletePopup() {
+    document.getElementById("deletePopup").style.display = "none";
+}
+
+async function deleteLayer() {
+    const layerName = document.getElementById("deleteSelect").value;
+
+    if (!confirm(`Delete layer "${layerName}" permanently?`)) return;
+
+    const res = await fetch("/delete_layer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ layer: layerName })
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+        alert("Deleted: " + layerName);
+        closeDeletePopup();
+        loadLayers();
+    } else {
+        alert("Error: " + data.error);
+    }
+}
 </script>
 </body>
 </html>
