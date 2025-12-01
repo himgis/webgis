@@ -13,6 +13,32 @@
         body, html { margin:0; padding:0; height:100% }
         #map { width:100%; height:100vh; position:relative }
 
+        /* ADMIN BUTTONS */
+        #adminMenu {
+            position:absolute;
+            top:10px;
+            left:10px;
+            background:white;
+            padding:10px;
+            border-radius:6px;
+            box-shadow:0 2px 10px rgba(0,0,0,0.3);
+            z-index:1500;
+            font-family:Roboto,sans-serif;
+            display:none;
+        }
+        #adminMenu a, #adminMenu button {
+            display:block;
+            margin:5px 0;
+            padding:8px 10px;
+            background:#4285f4;
+            color:white;
+            border:none;
+            border-radius:5px;
+            text-decoration:none;
+            font-size:14px;
+            cursor:pointer;
+        }
+
         /* Style Panel - Top Right */
         .style-panel {
             position:absolute; top:10px; right:10px; background:white; padding:15px; border-radius:8px;
@@ -42,6 +68,13 @@
     </style>
 </head>
 <body>
+
+<!-- ADMIN MENU (Hidden by default, shown only to admin) -->
+<div id="adminMenu">
+    <a href="/upload_page">Upload Shapefile</a>
+    <button onclick="logout()">Logout</button>
+</div>
+
 <div id="map"></div>
 
 <!-- Style Panel - Top Right -->
@@ -61,7 +94,7 @@
     </div>
 </div>
 
-<!-- Layers Visibility Panel - Bottom Left -->
+<!-- Layers Panel - Bottom Left -->
 <div class="panel layer-panel">
     <h3>Layers</h3>
     <div id="layerList">
@@ -75,7 +108,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-// Current Location (Top-left)
+// Current Location
 L.control.locate({
     position: 'topleft',
     icon: 'fa fa-location-crosshairs fa-2x',
@@ -85,10 +118,18 @@ L.control.locate({
     circleStyle: { color: '#3388ff', opacity: 0.5, fillOpacity: 0.15 }
 }).addTo(map);
 
-// Global style & layer storage
+
+// ADMIN LOGOUT
+function logout() {
+    fetch("/logout")
+        .then(() => location.reload());
+}
+
+
+// Global Variables
 const styleConfig = { weight: 3, fillOpacity: 0.5, radius: 8 };
-let allLayers = {};        // name → Leaflet layer
-let layerVisibility = {};  // name → true/false
+let allLayers = {};
+let layerVisibility = {};
 
 function updateDisplays() {
     document.getElementById('wVal').textContent = styleConfig.weight;
@@ -96,6 +137,8 @@ function updateDisplays() {
     document.getElementById('rVal').textContent = styleConfig.radius;
 }
 
+
+// Apply global style to all features
 function applyGlobalStyle() {
     Object.entries(allLayers).forEach(([name, layer]) => {
         if (layerVisibility[name] !== false) {
@@ -109,6 +152,7 @@ function applyGlobalStyle() {
     });
 }
 
+
 // Sliders
 ['weight','opacity','radius'].forEach(id => {
     document.getElementById(id).oninput = e => {
@@ -118,14 +162,23 @@ function applyGlobalStyle() {
     };
 });
 
-// Load all layers from server
+
+// Load layers from backend (also detects admin)
 async function loadLayers() {
     try {
         const res = await fetch('/layers');
         const data = await res.json();
+
+        // 🔥 Admin UI handling
+        if (data.is_admin) {
+            document.getElementById("adminMenu").style.display = "block";
+        } else {
+            document.getElementById("adminMenu").style.display = "none";
+        }
+
         const currentNames = Object.keys(data.layers);
 
-        // Remove deleted layers
+        // Remove missing layers
         Object.keys(allLayers).forEach(name => {
             if (!currentNames.includes(name)) {
                 map.removeLayer(allLayers[name]);
@@ -149,7 +202,8 @@ async function loadLayers() {
             } else {
                 const layer = L.geoJSON(geojson, {
                     style: () => ({ color, weight: styleConfig.weight, fillColor: color, fillOpacity: styleConfig.fillOpacity }),
-                    pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: styleConfig.radius, color, fillColor: color, fillOpacity: styleConfig.fillOpacity, weight: styleConfig.weight }),
+                    pointToLayer: (f, latlng) =>
+                        L.circleMarker(latlng, { radius: styleConfig.radius, color, fillColor: color, fillOpacity: styleConfig.fillOpacity, weight: styleConfig.weight }),
                     onEachFeature: (f, l) => {
                         if (f.properties) {
                             let html = '<table style="font-size:13px;width:100%">';
@@ -161,7 +215,12 @@ async function loadLayers() {
                         }
                     }
                 });
-                if (layerVisibility[name] !== false) { layer.addTo(map); layerVisibility[name] = true; }
+
+                if (layerVisibility[name] !== false) {
+                    layer.addTo(map);
+                    layerVisibility[name] = true;
+                }
+
                 allLayers[name] = layer;
             }
         }
@@ -176,6 +235,7 @@ async function loadLayers() {
         console.error("Load failed:", e);
     }
 }
+
 
 // Update Layers Panel
 function updateLayerCheckboxes(names) {
@@ -214,9 +274,11 @@ function updateLayerCheckboxes(names) {
     });
 }
 
-// Load layers every 3 seconds
+
+// Auto refresh
 loadLayers();
 setInterval(loadLayers, 3000);
+
 </script>
 </body>
 </html>
