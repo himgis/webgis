@@ -10,34 +10,35 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
 
     <style>
-        body,html{margin:0;padding:0;height:100%}
-        #map{width:100%;height:100vh;position:relative}
+        body, html { margin:0; padding:0; height:100% }
+        #map { width:100%; height:100vh; position:relative }
 
         /* Style Panel - Top Right */
-        .style-panel{
-            position:absolute;top:10px;right:10px;background:white;padding:15px;border-radius:8px;
-            box-shadow:0 2px 10px rgba(0,0,0,0.3);z-index:1000;width:280px;font-family:Roboto,sans-serif;
+        .style-panel {
+            position:absolute; top:10px; right:10px; background:white; padding:15px; border-radius:8px;
+            box-shadow:0 2px 10px rgba(0,0,0,0.3); z-index:1000; width:280px; font-family:Roboto,sans-serif;
         }
 
         /* Layers Panel - Bottom Left */
-        .layer-panel{
-            position:absolute;bottom:10px;left:10px;background:white;padding:12px;border-radius:8px;
-            box-shadow:0 2px 10px rgba(0,0,0,0.3);z-index:1000;width:260px;max-height:70vh;
-            overflow-y:auto;font-family:Roboto,sans-serif;font-size:14px;
+        .layer-panel {
+            position:absolute; bottom:10px; left:10px; background:white; padding:12px; border-radius:8px;
+            box-shadow:0 2px 10px rgba(0,0,0,0.3); z-index:1000; width:260px; max-height:70vh;
+            overflow-y:auto; font-family:Roboto,sans-serif; font-size:14px;
         }
-        .panel h3{margin:0 0 10px 0;background:#4285f4;color:white;padding:8px 12px;border-radius:5px;font-size:15px}
-        .slider{margin:12px 0}
-        label{display:block;margin-bottom:5px;font-weight:bold;font-size:14px}
-        input[type=range]{width:100%}
-        .val{font-size:12px;text-align:right;margin-top:3px;color:#555}
 
-        .layer-item{
-            padding:8px 5px;border-bottom:1px solid #eee;display:flex;align-items:center;
+        .panel h3 { margin:0 0 10px 0; background:#4285f4; color:white; padding:8px 12px; border-radius:5px; font-size:15px }
+        .slider { margin:12px 0 }
+        label { display:block; margin-bottom:5px; font-weight:bold; font-size:14px }
+        input[type=range]{ width:100% }
+        .val { font-size:12px; text-align:right; margin-top:3px; color:#555 }
+
+        .layer-item {
+            padding:8px 5px; border-bottom:1px solid #eee; display:flex; align-items:center;
             user-select:none;
         }
-        .layer-item input{margin-right:10px;cursor:pointer}
-        .layer-item label{margin:0;cursor:pointer;font-weight:500}
-        .layer-item:last-child{border-bottom:none}
+        .layer-item input { margin-right:10px; cursor:pointer }
+        .layer-item label { margin:0; cursor:pointer; font-weight:500 }
+        .layer-item:last-child { border-bottom:none }
     </style>
 </head>
 <body>
@@ -69,164 +70,153 @@
 </div>
 
 <script>
-    const map = L.map('map').setView([22.5, 73.0], 7);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+const map = L.map('map').setView([22.5, 73.0], 7);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
 
-    // Current Location (Top-left)
-    L.control.locate({
-        position: 'topleft',
-        icon: 'fa fa-location-crosshairs fa-2x',
-        setView: 'untilPanOrZoom',
-        locateOptions: { enableHighAccuracy: true, watch: true },
-        markerStyle: { radius: 10, color: '#3388ff', fillColor: '#3388ff' },
-        circleStyle: { color: '#3388ff', opacity: 0.5, fillOpacity: 0.15 }
-    }).addTo(map);
+// Current Location (Top-left)
+L.control.locate({
+    position: 'topleft',
+    icon: 'fa fa-location-crosshairs fa-2x',
+    setView: 'untilPanOrZoom',
+    locateOptions: { enableHighAccuracy: true, watch: true },
+    markerStyle: { radius: 10, color: '#3388ff', fillColor: '#3388ff' },
+    circleStyle: { color: '#3388ff', opacity: 0.5, fillOpacity: 0.15 }
+}).addTo(map);
 
-    // Global style & layer storage
-    const styleConfig = { weight: 3, fillOpacity: 0.5, radius: 8 };
-    let allLayers = {};        // name → Leaflet layer
-    let layerVisibility = {};  // name → true/false
+// Global style & layer storage
+const styleConfig = { weight: 3, fillOpacity: 0.5, radius: 8 };
+let allLayers = {};        // name → Leaflet layer
+let layerVisibility = {};  // name → true/false
 
-    function updateDisplays() {
-        document.getElementById('wVal').textContent = styleConfig.weight;
-        document.getElementById('oVal').textContent = styleConfig.fillOpacity.toFixed(2);
-        document.getElementById('rVal').textContent = styleConfig.radius;
-    }
+function updateDisplays() {
+    document.getElementById('wVal').textContent = styleConfig.weight;
+    document.getElementById('oVal').textContent = styleConfig.fillOpacity.toFixed(2);
+    document.getElementById('rVal').textContent = styleConfig.radius;
+}
 
-    function applyGlobalStyle() {
-        Object.entries(allLayers).forEach(([name, layer]) => {
-            if (layerVisibility[name] !== false) {
-                layer.eachLayer(l => {
-                    const color = l.feature?.properties?._color || '#3388ff';
-                    const newStyle = {
-                        color, weight: styleConfig.weight,
-                        fillColor: color, fillOpacity: styleConfig.fillOpacity
-                    };
-                    if (l.setStyle) l.setStyle(newStyle);
-                    if (l.setRadius) l.setRadius(styleConfig.radius);
-                });
+function applyGlobalStyle() {
+    Object.entries(allLayers).forEach(([name, layer]) => {
+        if (layerVisibility[name] !== false) {
+            layer.eachLayer(l => {
+                const color = l.feature?.properties?._color || '#3388ff';
+                const newStyle = { color, weight: styleConfig.weight, fillColor: color, fillOpacity: styleConfig.fillOpacity };
+                if (l.setStyle) l.setStyle(newStyle);
+                if (l.setRadius) l.setRadius(styleConfig.radius);
+            });
+        }
+    });
+}
+
+// Sliders
+['weight','opacity','radius'].forEach(id => {
+    document.getElementById(id).oninput = e => {
+        styleConfig[id === 'opacity' ? 'fillOpacity' : id] = +e.target.value;
+        updateDisplays();
+        applyGlobalStyle();
+    };
+});
+
+// Load all layers from server
+async function loadLayers() {
+    try {
+        const res = await fetch('/layers');
+        const data = await res.json();
+        const currentNames = Object.keys(data.layers);
+
+        // Remove deleted layers
+        Object.keys(allLayers).forEach(name => {
+            if (!currentNames.includes(name)) {
+                map.removeLayer(allLayers[name]);
+                delete allLayers[name];
+                delete layerVisibility[name];
             }
         });
-    }
 
-    // Sliders
-    ['weight','opacity','radius'].forEach(id => {
-        document.getElementById(id).oninput = e => {
-            styleConfig[id === 'opacity' ? 'fillOpacity' : id] = +e.target.value;
-            updateDisplays();
-            applyGlobalStyle();
-        };
-    });
+        // Add or update layers
+        for (const [name, info] of Object.entries(data.layers)) {
+            const geojson = info.geojson;
+            const color = info.color;
 
-    async function loadLayers() {
-        try {
-            const res = await fetch('/layers');
-            const data = await res.json();
-            const currentNames = Object.keys(data.layers);
-
-            // Remove deleted layers
-            Object.keys(allLayers).forEach(name => {
-                if (!currentNames.includes(name)) {
-                    map.removeLayer(allLayers[name]);
-                    delete allLayers[name];
-                    delete layerVisibility[name];
-                }
+            geojson.features.forEach(f => {
+                if (!f.properties) f.properties = {};
+                f.properties._color = color;
             });
 
-            // Add or update layers
-            for (const [name, info] of Object.entries(data.layers)) {
-                const geojson = info.geojson;
-                const color = info.color;
-
-                geojson.features.forEach(f => {
-                    if (!f.properties) f.properties = {};
-                    f.properties._color = color;
-                });
-
-                if (allLayers[name]) {
-                    allLayers[name].clearLayers().addData(geojson);
-                } else {
-                    const layer = L.geoJSON(geojson, {
-                        style: () => ({
-                            color, weight: styleConfig.weight,
-                            fillColor: color, fillOpacity: styleConfig.fillOpacity
-                        }),
-                        pointToLayer: (f, latlng) => L.circleMarker(latlng, {
-                            radius: styleConfig.radius, color, fillColor: color,
-                            fillOpacity: styleConfig.fillOpacity, weight: styleConfig.weight
-                        }),
-                        onEachFeature: (f, l) => {
-                            if (f.properties) {
-                                let html = '<table style="font-size:13px;width:100%">';
-                                for (const [k,v] of Object.entries(f.properties)) {
-                                    if (k !== '_color')
-                                        html += `<tr><td style="font-weight:bold;padding:4px">${k}</td><td style="padding:4px">${v??''}</td></tr>`;
-                                }
-                                html += '</table>';
-                                l.bindPopup(html);
+            if (allLayers[name]) {
+                allLayers[name].clearLayers().addData(geojson);
+            } else {
+                const layer = L.geoJSON(geojson, {
+                    style: () => ({ color, weight: styleConfig.weight, fillColor: color, fillOpacity: styleConfig.fillOpacity }),
+                    pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: styleConfig.radius, color, fillColor: color, fillOpacity: styleConfig.fillOpacity, weight: styleConfig.weight }),
+                    onEachFeature: (f, l) => {
+                        if (f.properties) {
+                            let html = '<table style="font-size:13px;width:100%">';
+                            for (const [k,v] of Object.entries(f.properties)) {
+                                if (k !== '_color') html += `<tr><td style="font-weight:bold;padding:4px">${k}</td><td style="padding:4px">${v??''}</td></tr>`;
                             }
+                            html += '</table>';
+                            l.bindPopup(html);
                         }
-                    });
-
-                    if (layerVisibility[name] !== false) {
-                        layer.addTo(map);
-                        layerVisibility[name] = true;
                     }
-                    allLayers[name] = layer;
-                }
+                });
+                if (layerVisibility[name] !== false) { layer.addTo(map); layerVisibility[name] = true; }
+                allLayers[name] = layer;
             }
-
-            updateLayerCheckboxes(currentNames);
-
-            if (data.bounds && Object.keys(allLayers).length === 1) {
-                map.fitBounds(data.bounds);
-            }
-        } catch (e) {
-            console.error("Load failed:", e);
-        }
-    }
-
-    function updateLayerCheckboxes(names) {
-        const container = document.getElementById('layerList');
-        container.innerHTML = '';
-
-        if (names.length === 0) {
-            container.innerHTML = '<em>No layers</em>';
-            return;
         }
 
-        names.forEach(name => {
-            const visible = layerVisibility[name] !== false;
-            const color = allLayers[name]?.options?.style?.().color || '#3388ff';
+        updateLayerCheckboxes(currentNames);
 
-            const div = document.createElement('div');
-            div.className = 'layer-item';
+        if (data.bounds && Object.keys(allLayers).length > 0) {
+            map.fitBounds(data.bounds);
+        }
 
-            const cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.id = 'cb_' + name.replace(/\s+/g, '_');
-            cb.checked = visible;
-            cb.onchange = () => {
-                layerVisibility[name] = cb.checked;
-                cb.checked ? map.addLayer(allLayers[name]) : map.removeLayer(allLayers[name]);
-            };
+    } catch (e) {
+        console.error("Load failed:", e);
+    }
+}
 
-            const label = document.createElement('label');
-            label.htmlFor = cb.id;
-            label.textContent = name;
-            label.style.color = color;
+// Update Layers Panel
+function updateLayerCheckboxes(names) {
+    const container = document.getElementById('layerList');
+    container.innerHTML = '';
 
-            div.appendChild(cb);
-            div.appendChild(label);
-            container.appendChild(div);
-        });
+    if (names.length === 0) {
+        container.innerHTML = '<em>No layers</em>';
+        return;
     }
 
-    // Load + refresh every 3 seconds
-    loadLayers();
-    setInterval(loadLayers, 3000);
+    names.forEach(name => {
+        const visible = layerVisibility[name] !== false;
+        const color = allLayers[name]?.options?.style?.().color || '#3388ff';
+
+        const div = document.createElement('div');
+        div.className = 'layer-item';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.id = 'cb_' + name.replace(/\s+/g, '_');
+        cb.checked = visible;
+        cb.onchange = () => {
+            layerVisibility[name] = cb.checked;
+            cb.checked ? map.addLayer(allLayers[name]) : map.removeLayer(allLayers[name]);
+        };
+
+        const label = document.createElement('label');
+        label.htmlFor = cb.id;
+        label.textContent = name;
+        label.style.color = color;
+
+        div.appendChild(cb);
+        div.appendChild(label);
+        container.appendChild(div);
+    });
+}
+
+// Load layers every 3 seconds
+loadLayers();
+setInterval(loadLayers, 3000);
 </script>
 </body>
 </html>
