@@ -1,100 +1,59 @@
-import os
-import zipfile
-import tempfile
-import shutil
-import random
-import geopandas as gpd
-from flask import Flask, jsonify, render_template, request
-
-app = Flask(__name__)
-
-layers = {}
-bounds_global = None
-
-
-def random_color():
-    return "#{:06x}".format(random.randint(0, 0xFFFFFF))
-
-
-# ---------------- HOME PAGE -----------------
-
-@app.route("/")
-def home():
-    return render_template("map.html")
-
-
-# --------------- UPLOAD PAGE ----------------
-
-@app.route("/upload_page")
-def upload_page():
-    return render_template("upload_page.html")
-
-
-# --------------- SHAPEFILE UPLOAD API ---------------
-
 @app.route("/upload", methods=["POST"])
-def upload_shapefile():
-    global bounds_global
+def upload():
+    if "files" not in request.files:
+        return "No files uploaded", 400
 
-    try:
-        if 'file' not in request.files:
-            return jsonify({"error": "No file received"}), 400
+    uploaded_files = request.files.getlist("files")
 
-        file = request.files['file']
+    for file in uploaded_files:
         if file.filename == "":
-            return jsonify({"error": "No file selected"}), 400
+            continue
 
-        # Read ZIP bytes safely
-        zip_bytes = file.read()
+        filename = file.filename
+
+        # Save ZIP file
         temp_dir = tempfile.mkdtemp()
+        zip_path = os.path.join(temp_dir, filename)
+        file.save(zip_path)
 
-        zip_path = os.path.join(temp_dir, "upload.zip")
-        with open(zip_path, "wb") as f:
-            f.write(zip_bytes)
+        # Extract ZIP
+        extract_dir = os.path.join(temp_dir, "extracted")
+        os.makedirs(extract_dir, exist_ok=True)
 
-        # Extract files
-        with zipfile.ZipFile(zip_path, 'r') as z:
-            z.extractall(temp_dir)
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(extract_dir)
 
-        # Find .shp file
-        shp_files = [f for f in os.listdir(temp_dir) if f.lower().endswith(".shp")]
-        if not shp_files:
+        # Detect .shp file
+        shp_file = None
+        for f in os.listdir(extract_dir):
+            if f.endswith(".shp"):
+                shp_file = os.path.join(extract_dir, f)
+                break
+
+        if shp_file is None:
             shutil.rmtree(temp_dir)
-            return jsonify({"error": "ZIP does not contain a .shp file"}), 400
+            continue
 
-        shp_path = os.path.join(temp_dir, shp_files[0])
+        # Read shapefile
+        gdf = gpd.read_file(shp_file)
 
-        # Read shapefile → GeoJSON
-        gdf = gpd.read_file(shp_path)
-        gdf = gdf.to_crs(4326)
+        # Convert to GeoJSON
+        geojson = gdf.to_crs("EPSG:4326").__geo_interface__
 
-        name = os.path.splitext(shp_files[0])[0]
-        color = random_color()
+        # Assign random color
+        color = "#{:06x}".format(random.randint(0, 0xFFFFFF))
 
-        layers[name] = {
-            "geojson": gdf.__geo_interface__,
-            "color": color
+        # Save in global dictionary
+        layer_name = os.path.splitext(filename)[0]
+        layers[layer_name] = {
+            "geojson": geojson,
+            "color": color,
+            "opacity": 0.7
         }
 
-        b = gdf.total_bounds
-        bounds_global = [[b[1], b[0]], [b[3], b[2]]]
-
         shutil.rmtree(temp_dir)
-        return jsonify({"status": "success", "layer": name, "color": color})
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-# -------------- SEND LAYERS TO MAP --------------
-
-@app.route("/layers")
-def get_layers():
-    return jsonify({"layers": layers, "bounds": bounds_global})
-
-
-# ---------------- RUN FOR RENDER --------------------
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    return '''
+        <h2>Upload Successful!</h2>
+        <a href="/map">Go to Map</a>
+    '''
