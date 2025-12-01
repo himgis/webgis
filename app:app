@@ -3,7 +3,6 @@
 <head>
     <title>Upload Shapefile ZIP</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-
     <style>
         body { font-family: Arial; background: #f3e5f5; padding: 50px; text-align: center; }
         h1 { color: #6a1b9a; }
@@ -13,58 +12,41 @@
         #msg { margin: 30px; font-size: 20px; font-weight: bold; }
     </style>
 </head>
-
 <body>
 
-    <h1>Upload Shapefile (ZIP) — Multiple Files Supported</h1>
+<h1>Upload Shapefile (ZIP) — Multiple Files Supported</h1>
 
-    <!-- MULTIPLE ZIP selection -->
-    <input type="file" id="f" accept=".zip" multiple><br>
-    <button onclick="upload()">UPLOAD</button>
+<input type="file" id="f" accept=".zip" multiple><br>
+<button onclick="upload()">UPLOAD</button>
 
-    <div id="msg"></div>
+<div id="msg"></div>
 
-    <hr>
-    <a href="/" style="font-size:20px;color:#9c27b0">Back to Map</a>
+<hr>
+<a href="/" style="font-size:20px;color:#9c27b0">Back to Map</a>
 
 <script>
 async function upload() {
     const files = document.getElementById('f').files;
-
-    if (!files.length) {
-        alert("Please select at least one ZIP file");
-        return;
-    }
+    if (!files.length) { alert("Please select at least one ZIP file"); return; }
 
     const fd = new FormData();
-    for (let i = 0; i < files.length; i++) {
-        fd.append("files", files[i]); // multiple files
-    }
+    for (let i = 0; i < files.length; i++) fd.append("files", files[i]);
 
     document.getElementById("msg").innerHTML = "<span style='color:blue'>Uploading...</span>";
 
-    let res = await fetch("/upload", {
-        method: "POST",
-        body: fd
-    });
-
-    let data = await res.json();
+    const res = await fetch("/upload", { method: "POST", body: fd });
+    const data = await res.json();
 
     if (res.ok) {
         let html = "<span style='color:green'>Uploaded Layers:</span><br><br>";
-        data.uploaded.forEach(name => {
-            html += "✔ <b>" + name + "</b><br>";
-        });
+        data.uploaded.forEach(name => html += "✔ <b>" + name + "</b><br>");
         if (data.failed.length > 0) {
             html += "<br><span style='color:red'>Failed Files:</span><br>";
-            data.failed.forEach(f => {
-                html += "✘ " + f + "<br>";
-            });
+            data.failed.forEach(f => html += "✘ " + f + "<br>");
         }
         document.getElementById("msg").innerHTML = html;
     } else {
-        document.getElementById("msg").innerHTML =
-            "<span style='color:red'>ERROR: " + data.error + "</span>";
+        document.getElementById("msg").innerHTML = "<span style='color:red'>ERROR: " + data.error + "</span>";
     }
 }
 </script>
