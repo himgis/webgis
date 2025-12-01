@@ -1,84 +1,84 @@
 import os
-import tempfile
-import zipfile
-import shutil
 import json
+import zipfile
+import tempfile
+import shutil
 import random
-
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS
 import geopandas as gpd
 
 app = Flask(__name__)
 CORS(app)
 
-layers = {}   # Stores loaded layers
+layers = {}   # Stored layers: name -> {geojson, color, opacity}
 
 
-# ----------------------------------------------------
-# HOME → Upload Page
-# ----------------------------------------------------
-@app.route('/')
+@app.route("/")
+def home():
+    return render_template("map.html")
+
+
+@app.route("/upload_page")
 def upload_page():
-    return render_template('upload_page.html')
+    return render_template("upload_page.html")
 
 
-# ----------------------------------------------------
-# Upload Shapefile (ZIP)
-# ----------------------------------------------------
-@app.route('/upload', methods=['POST'])
+# -------------------------------
+# UPLOAD SHAPEFILE (ZIP)
+# -------------------------------
+@app.route("/upload", methods=["POST"])
 def upload():
-    if 'file' not in request.files:
+    if "file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
 
-    file = request.files['file']
+    file = request.files["file"]
 
-    if file.filename == '':
-        return jsonify({"error": "No file selected"}), 400
+    if file.filename == "":
+        return jsonify({"error": "Empty filename"}), 400
 
-    if not file.filename.lower().endswith('.zip'):
-        return jsonify({"error": "Please upload a ZIP containing the shapefile"}), 400
+    if not file.filename.lower().endswith(".zip"):
+        return jsonify({"error": "Upload a .zip containing shapefile"}), 400
 
+    # Create temp directory
     temp_dir = tempfile.mkdtemp()
 
     try:
         zip_path = os.path.join(temp_dir, "uploaded.zip")
-
-        # Save ZIP (bytes)
         file.save(zip_path)
 
         # Extract ZIP
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(temp_dir)
+        with zipfile.ZipFile(zip_path, "r") as z:
+            z.extractall(temp_dir)
 
-        shp_path = None
+        # Find .shp file
+        shp_file = None
         for f in os.listdir(temp_dir):
             if f.lower().endswith(".shp"):
-                shp_path = os.path.join(temp_dir, f)
+                shp_file = os.path.join(temp_dir, f)
                 break
 
-        if shp_path is None:
+        if not shp_file:
             return jsonify({"error": "No .shp file found inside ZIP"}), 400
 
         # Read shapefile
-        gdf = gpd.read_file(shp_path)
+        gdf = gpd.read_file(shp_file)
 
-        # Convert to GeoJSON dictionary
-        geojson_data = json.loads(gdf.to_json())
+        # Convert to GeoJSON dict (not string)
+        geojson = json.loads(gdf.to_json())
 
-        # Assign random color
-        layer_color = "#" + ''.join(random.choices('0123456789ABCDEF', k=6))
+        # Generate random color
+        color = "#" + ''.join(random.choices("0123456789ABCDEF", k=6))
 
-        layer_name = os.path.basename(shp_path)
+        name = os.path.basename(shp_file)
 
-        # Store layer
-        layers[layer_name] = {
-            "geojson": geojson_data,
-            "color": layer_color,
-            "opacity": 0.9
+        layers[name] = {
+            "geojson": geojson,
+            "color": color,
+            "opacity": 0.8
         }
 
-        return jsonify({"success": True, "layer_name": layer_name})
+        return jsonify({"success": True, "layer_name": name})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -87,36 +87,42 @@ def upload():
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-# ----------------------------------------------------
-# Map Page
-# ----------------------------------------------------
-@app.route('/map')
-def map_page():
-    return render_template('map.html')
-
-
-# ----------------------------------------------------
-# Fetch Layer List for Map
-# ----------------------------------------------------
-@app.route('/get_layers')
+# -------------------------------
+# SEND LAYERS TO MAP
+# -------------------------------
+@app.route("/layers")
 def get_layers():
-    return jsonify(layers)
+    try:
+        # Compute combined bounds
+        all_bounds = None
+
+        for info in layers.values():
+            gdf = gpd.GeoDataFrame.from_features(info["geojson"]["features"])
+            if not gdf.empty:
+                b = gdf.total_bounds  # minx, miny, maxx, maxy
+                if all_bounds is None:
+                    all_bounds = b
+                else:
+                    all_bounds = [
+                        min(all_bounds[0], b[0]),
+                        min(all_bounds[1], b[1]),
+                        max(all_bounds[2], b[2]),
+                        max(all_bounds[3], b[3])
+                    ]
+
+        return jsonify({
+            "layers": layers,
+            "bounds": all_bounds
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
-# ----------------------------------------------------
-# Delete Layer
-# ----------------------------------------------------
-@app.route('/remove_layer', methods=['POST'])
-def remove_layer():
-    data = request.json
-    name = data.get("layer_name")
-
-    if name in layers:
-        del layers[name]
-        return jsonify({"success": True})
-
-    return jsonify({"error": "Layer not found"}), 400
-
-
+# -------------------------------
+# IMPORTANT: Render.com PORT FIX
+# -------------------------------
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    print(f"Running on port {port}...")
+    app.run(host="0.0.0.0", port=port)
