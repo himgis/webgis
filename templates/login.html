@@ -27,7 +27,7 @@ async function login() {
         body: JSON.stringify({ username: u, password: p })
     });
 
-    let data = await res.json();
+    let data = await res.json(); 
 
     if (res.ok) {
         window.location.href = "/";
