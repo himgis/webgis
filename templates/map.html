@@ -69,7 +69,7 @@
 </head>
 <body>
 
-<!-- ADMIN MENU (Hidden by default, shown only to admin) -->
+<!-- ADMIN MENU -->
 <div id="adminMenu">
     <a href="/upload_page">Upload Shapefile</a>
     <button onclick="logout()">Logout</button>
@@ -77,7 +77,7 @@
 
 <div id="map"></div>
 
-<!-- Style Panel - Top Right -->
+<!-- Style Panel -->
 <div class="panel style-panel">
     <h3>Layer Style</h3>
     <div class="slider">
@@ -94,7 +94,7 @@
     </div>
 </div>
 
-<!-- Layers Panel - Bottom Left -->
+<!-- Layers Panel -->
 <div class="panel layer-panel">
     <h3>Layers</h3>
     <div id="layerList">
@@ -108,7 +108,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-// Current Location
+// Locate
 L.control.locate({
     position: 'topleft',
     icon: 'fa fa-location-crosshairs fa-2x',
@@ -118,15 +118,11 @@ L.control.locate({
     circleStyle: { color: '#3388ff', opacity: 0.5, fillOpacity: 0.15 }
 }).addTo(map);
 
+function logout() { fetch("/logout").then(() => location.reload()); }
 
-// ADMIN LOGOUT
-function logout() {
-    fetch("/logout")
-        .then(() => location.reload());
-}
-
-
-// Global Variables
+// Globals
+let firstLoad = true;
+let previousLayerNames = [];
 const styleConfig = { weight: 3, fillOpacity: 0.5, radius: 8 };
 let allLayers = {};
 let layerVisibility = {};
@@ -137,8 +133,6 @@ function updateDisplays() {
     document.getElementById('rVal').textContent = styleConfig.radius;
 }
 
-
-// Apply global style to all features
 function applyGlobalStyle() {
     Object.entries(allLayers).forEach(([name, layer]) => {
         if (layerVisibility[name] !== false) {
@@ -152,8 +146,6 @@ function applyGlobalStyle() {
     });
 }
 
-
-// Sliders
 ['weight','opacity','radius'].forEach(id => {
     document.getElementById(id).oninput = e => {
         styleConfig[id === 'opacity' ? 'fillOpacity' : id] = +e.target.value;
@@ -162,19 +154,13 @@ function applyGlobalStyle() {
     };
 });
 
-
-// Load layers from backend (also detects admin)
 async function loadLayers() {
     try {
         const res = await fetch('/layers');
         const data = await res.json();
 
-        // 🔥 Admin UI handling
-        if (data.is_admin) {
-            document.getElementById("adminMenu").style.display = "block";
-        } else {
-            document.getElementById("adminMenu").style.display = "none";
-        }
+        // Admin UI
+        document.getElementById("adminMenu").style.display = data.is_admin ? "block" : "none";
 
         const currentNames = Object.keys(data.layers);
 
@@ -187,7 +173,10 @@ async function loadLayers() {
             }
         });
 
-        // Add or update layers
+        // NEW LAYERS (to detect zoom trigger)
+        const newLayers = currentNames.filter(n => !previousLayerNames.includes(n));
+
+        // Add/update layers
         for (const [name, info] of Object.entries(data.layers)) {
             const geojson = info.geojson;
             const color = info.color;
@@ -220,24 +209,29 @@ async function loadLayers() {
                     layer.addTo(map);
                     layerVisibility[name] = true;
                 }
-
                 allLayers[name] = layer;
             }
         }
 
         updateLayerCheckboxes(currentNames);
 
-        if (data.bounds && Object.keys(allLayers).length > 0) {
-            map.fitBounds(data.bounds);
+        // 📌 Fit view only on first load OR new layer added
+        if ((firstLoad || newLayers.length > 0) && Object.keys(allLayers).length > 0) {
+            const allBounds = L.latLngBounds([]);
+            Object.values(allLayers).forEach(layer => {
+                try { allBounds.extend(layer.getBounds()); } catch {}
+            });
+            if (allBounds.isValid()) map.fitBounds(allBounds);
         }
+
+        firstLoad = false;
+        previousLayerNames = currentNames;
 
     } catch (e) {
         console.error("Load failed:", e);
     }
 }
 
-
-// Update Layers Panel
 function updateLayerCheckboxes(names) {
     const container = document.getElementById('layerList');
     container.innerHTML = '';
@@ -273,7 +267,6 @@ function updateLayerCheckboxes(names) {
         container.appendChild(div);
     });
 }
-
 
 // Auto refresh
 loadLayers();
