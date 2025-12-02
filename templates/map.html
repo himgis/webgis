@@ -13,7 +13,7 @@
         body, html { margin:0; padding:0; height:100% }
         #map { width:100%; height:100vh; position:relative }
 
-        /* ADMIN BUTTONS */
+        /* ADMIN MENU */
         #adminMenu {
             position:absolute;
             top:10px;
@@ -59,10 +59,16 @@
         .val { font-size:12px; text-align:right; margin-top:3px; color:#555 }
 
         .layer-item {
-            padding:8px 5px; border-bottom:1px solid #eee; display:flex; align-items:center;
+            padding:8px 5px; border-bottom:1px solid #eee; display:flex; align-items:center; justify-content:space-between;
             user-select:none;
         }
         .layer-item input { margin-right:10px; cursor:pointer }
+        .delete-btn {
+            color:red;
+            cursor:pointer;
+            font-weight:bold;
+            margin-left:5px;
+        }
     </style>
 </head>
 <body>
@@ -119,6 +125,7 @@ let firstLoad = true;
 let previousLayerNames = [];
 let allLayers = {};
 let layerVisibility = {};
+let isAdmin = false;  // track admin status
 
 const styleConfig = { weight: 3, fillOpacity: 0.5, radius: 8 };
 
@@ -147,12 +154,30 @@ function applyGlobalStyle() {
     };
 });
 
+// DELETE layer
+function deleteLayer(name) {
+    if (!confirm(`Delete layer "${name}"?`)) return;
+    fetch(`/delete/${encodeURIComponent(name)}`, { method: 'DELETE' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.message) {
+                if (allLayers[name]) map.removeLayer(allLayers[name]);
+                delete allLayers[name];
+                delete layerVisibility[name];
+                loadLayers(); // refresh list
+            } else {
+                alert(data.error || "Failed to delete");
+            }
+        });
+}
+
 async function loadLayers() {
     try {
         const res = await fetch('/layers');
         const data = await res.json();
 
-        document.getElementById("adminMenu").style.display = data.is_admin ? "block" : "none";
+        isAdmin = data.is_admin;
+        document.getElementById("adminMenu").style.display = isAdmin ? "block" : "none";
 
         const currentNames = Object.keys(data.layers);
         const newLayers = currentNames.filter(x => !previousLayerNames.includes(x));
@@ -177,12 +202,10 @@ async function loadLayers() {
             });
 
             if (!allLayers[name]) {
-                // CREATE once only
                 const layer = L.geoJSON(geojson, {
                     style: () => ({ color, weight: styleConfig.weight, fillColor: color, fillOpacity: styleConfig.fillOpacity }),
                     pointToLayer: (f, latlng) =>
                         L.circleMarker(latlng, { radius: styleConfig.radius, color, fillColor: color, fillOpacity: styleConfig.fillOpacity, weight: styleConfig.weight }),
-
                     onEachFeature: (f, l) => {
                         let html = '<table style="font-size:13px;width:100%">';
                         for (const [k,v] of Object.entries(f.properties)) {
@@ -234,6 +257,7 @@ function updateLayerCheckboxes(names) {
         const row = document.createElement("div");
         row.className = "layer-item";
 
+        const left = document.createElement("span");
         const cb = document.createElement("input");
         cb.type = "checkbox";
         cb.checked = visible;
@@ -245,8 +269,19 @@ function updateLayerCheckboxes(names) {
         const label = document.createElement("label");
         label.textContent = name;
 
-        row.appendChild(cb);
-        row.appendChild(label);
+        left.appendChild(cb);
+        left.appendChild(label);
+        row.appendChild(left);
+
+        if (isAdmin) {
+            const del = document.createElement("span");
+            del.className = "delete-btn";
+            del.title = "Delete layer";
+            del.textContent = "🗑️";
+            del.onclick = () => deleteLayer(name);
+            row.appendChild(del);
+        }
+
         div.appendChild(row);
     });
 }
