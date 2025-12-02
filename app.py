@@ -8,13 +8,17 @@ from flask_cors import CORS
 import geopandas as gpd
 
 app = Flask(__name__)
-app.secret_key = "YOUR_SECRET_KEY"   # change this
+app.secret_key = "YOUR_SECRET_KEY"  # change this
 CORS(app)
 
 ADMIN_USER = "admin"
 ADMIN_PASS = "1234"
 
-layers = {}  # Stores all layers: name → {geojson, color, opacity}
+# Persistent uploads folder
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+layers = {}  # Stores all layers: name → {geojson, color, opacity, zip_path}
 
 
 # ---------------- Login Page ----------------
@@ -54,14 +58,12 @@ def index():
 def upload_page():
     if not session.get("admin"):
         return "Unauthorized", 403
-
     return render_template("upload_page.html")
 
 
 # ---------------- Upload Shapefiles (Admin Only) ----------------
 @app.route("/upload", methods=["POST"])
 def upload_shapefiles():
-
     if not session.get("admin"):
         return jsonify({"error": "Only admin can upload!"}), 403
 
@@ -77,11 +79,12 @@ def upload_shapefiles():
             failed.append(file.filename)
             continue
 
+        # Save ZIP permanently
+        zip_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        file.save(zip_path)
+
         temp_dir = tempfile.mkdtemp()
         try:
-            zip_path = os.path.join(temp_dir, file.filename)
-            file.save(zip_path)
-
             with zipfile.ZipFile(zip_path, "r") as z:
                 z.extractall(temp_dir)
 
@@ -105,7 +108,8 @@ def upload_shapefiles():
             layers[layer_name] = {
                 "geojson": geojson_dict,
                 "color": color,
-                "opacity": 0.7
+                "opacity": 0.7,
+                "zip_path": zip_path  # store for persistence
             }
 
             uploaded.append(layer_name)
@@ -122,11 +126,14 @@ def upload_shapefiles():
 # ---------------- Delete Layer (Admin Only) ----------------
 @app.route("/delete/<layer_name>", methods=["DELETE"])
 def delete_layer(layer_name):
-
     if not session.get("admin"):
         return jsonify({"error": "Only admin can delete!"}), 403
 
     if layer_name in layers:
+        # Remove ZIP from disk
+        zip_path = layers[layer_name].get("zip_path")
+        if zip_path and os.path.exists(zip_path):
+            os.remove(zip_path)
         layers.pop(layer_name)
         return jsonify({"message": "Deleted"})
     else:
@@ -158,6 +165,44 @@ def get_layers():
         "layers": layers,
         "bounds": final_bounds
     })
+
+
+# ---------------- Load existing shapefiles on server start ----------------
+def load_existing_shapefiles():
+    for f in os.listdir(UPLOAD_FOLDER):
+        if f.lower().endswith(".zip"):
+            zip_path = os.path.join(UPLOAD_FOLDER, f)
+            temp_dir = tempfile.mkdtemp()
+            try:
+                with zipfile.ZipFile(zip_path, "r") as z:
+                    z.extractall(temp_dir)
+
+                shp_file = None
+                for root, dirs, files2 in os.walk(temp_dir):
+                    for ff in files2:
+                        if ff.lower().endswith(".shp"):
+                            shp_file = os.path.join(root, ff)
+                            break
+
+                if shp_file:
+                    gdf = gpd.read_file(shp_file)
+                    geojson_dict = gdf.to_crs("EPSG:4326").__geo_interface__
+                    layer_name = os.path.splitext(f)[0]
+                    color = "#{:06x}".format(random.randint(0, 0xFFFFFF))
+                    layers[layer_name] = {
+                        "geojson": geojson_dict,
+                        "color": color,
+                        "opacity": 0.7,
+                        "zip_path": zip_path
+                    }
+            except Exception as e:
+                print("ERROR loading existing shapefile:", f, e)
+            finally:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+# Load existing shapefiles when server starts
+load_existing_shapefiles()
 
 
 if __name__ == "__main__":
