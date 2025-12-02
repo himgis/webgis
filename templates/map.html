@@ -117,7 +117,13 @@ function loadLayers() {
     fetch("/layers")
         .then(r => r.json())
         .then(data => {
-            updateLayerListUI(data.layers);
+            
+            // Only update UI when layer count changes (no flicker)
+            if (Object.keys(data.layers).length !== Object.keys(allLayers).length) {
+                updateLayerListUI(data.layers);
+            }
+
+            // Always update map layers
             updateMapLayers(data.layers, data.bounds);
         });
 }
@@ -165,7 +171,7 @@ function deleteLayer(name) {
                 if (allLayers[name]) map.removeLayer(allLayers[name]);
                 delete allLayers[name];
                 delete layerVisibility[name];
-                loadLayers();   // update UI
+                loadLayers();   // update UI safely
             } else {
                 alert(res.error);
             }
@@ -174,7 +180,7 @@ function deleteLayer(name) {
 
 
 // ==============================
-// Add Layers to Map (NO REMOVE → popups stay)
+// Add Layers to Map (popup stays)
 // ==============================
 function updateMapLayers(layersFromServer, bounds) {
 
@@ -222,11 +228,13 @@ function updateMapLayers(layersFromServer, bounds) {
             allLayers[name] = layer;
         }
 
-        // 🚫 DO NOT REMOVE OR REBUILD — popup fix
-        // just keep existing layer alive
+        // 🚫 DO NOT REMOVE OR REBUILD → popup fix
+        // keeps existing layer alive
     }
 
-    if (bounds) map.fitBounds(bounds);
+    if (bounds && Object.keys(allLayers).length > 0) {
+        map.fitBounds(bounds);
+    }
 }
 
 
@@ -242,10 +250,9 @@ function toggleLayer(name, state) {
     }
 }
 
-
-// Run every 3 seconds without breaking popup
-setInterval(loadLayers, 3000);
+// Initial load and refresh safely
 loadLayers();
+setInterval(loadLayers, 3000);
 
 </script>
 
