@@ -1,7 +1,8 @@
 Flask
-flask-cors
+Flask-Cors
 geopandas
 shapely
 fiona
-gunicorn
 pyproj
+rtree
+gunicorn
