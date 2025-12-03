@@ -29,13 +29,48 @@ ADMIN_PASS = "1234"
 layers = {}  # Stores all layers: name → {geojson, color, opacity, zip_path}
 
 # -----------------------------------------
-# GITHUB SHAPEFILES CONFIG
+# GITHUB CONFIG (auto-load all shapefile ZIPs)
 # -----------------------------------------
-# Format: { "layer_name": "raw_github_url_to_zip" }
-GITHUB_SHAPEFILES = {
-    "example_layer": "https://github.com/username/repo/raw/main/shapefile.zip"
-}
+GITHUB_API_URL = "https://api.github.com/repos/himgis/webgis/contents/uploads"
 
+def list_github_shapefiles():
+    """Fetch all .zip files from GitHub uploads folder"""
+    try:
+        r = requests.get(GITHUB_API_URL)
+        r.raise_for_status()
+        data = r.json()
+        shapefiles = {}
+        for file in data:
+            if file['name'].lower().endswith(".zip"):
+                layer_name = file['name'].replace(".zip", "")
+                shapefiles[layer_name] = file['download_url']  # raw GitHub download link
+        return shapefiles
+    except Exception as e:
+        print("ERROR listing GitHub shapefiles:", e)
+        return {}
+
+def load_github_shapefiles():
+    shapefiles = list_github_shapefiles()
+    for layer_name, url in shapefiles.items():
+        zip_path = os.path.join(UPLOAD_FOLDER, f"{layer_name}.zip")
+
+        # Download only if not already present
+        if not os.path.exists(zip_path):
+            try:
+                r = requests.get(url)
+                r.raise_for_status()
+                with open(zip_path, "wb") as f:
+                    f.write(r.content)
+                print(f"Downloaded {layer_name} from GitHub")
+            except Exception as e:
+                print(f"Failed to download {layer_name}: {e}")
+                continue
+
+        # Load into layers
+        if load_zip_into_layers(zip_path):
+            print(f"Loaded {layer_name} into layers")
+        else:
+            print(f"Failed to load {layer_name}")
 
 # -----------------------------------------
 # LOGIN PAGE
@@ -43,7 +78,6 @@ GITHUB_SHAPEFILES = {
 @app.route("/login", methods=["GET"])
 def login_page():
     return render_template("login.html")
-
 
 @app.route("/login", methods=["POST"])
 def login_api():
@@ -54,12 +88,10 @@ def login_api():
     else:
         return jsonify({"error": "Invalid username or password"}), 401
 
-
 @app.route("/logout")
 def logout():
     session.pop("admin", None)
     return jsonify({"message": "Logged out"})
-
 
 # -----------------------------------------
 # HOME PAGE (MAP)
@@ -69,7 +101,6 @@ def index():
     is_admin = session.get("admin", False)
     return render_template("map.html", is_admin=is_admin)
 
-
 # -----------------------------------------
 # UPLOAD PAGE (ADMIN ONLY)
 # -----------------------------------------
@@ -78,7 +109,6 @@ def upload_page():
     if not session.get("admin"):
         return "Unauthorized", 403
     return render_template("upload_page.html")
-
 
 # -----------------------------------------
 # UPLOAD SHAPEFILES
@@ -110,7 +140,6 @@ def upload_shapefiles():
 
     return jsonify({"uploaded": uploaded, "failed": failed})
 
-
 # -----------------------------------------
 # DELETE LAYER
 # -----------------------------------------
@@ -127,7 +156,6 @@ def delete_layer(layer_name):
         return jsonify({"message": "Deleted"})
     else:
         return jsonify({"error": "Layer not found"}), 404
-
 
 # -----------------------------------------
 # SEND LAYER INFO TO FRONTEND
@@ -155,7 +183,6 @@ def get_layers():
         "layers": layers,
         "bounds": final_bounds
     })
-
 
 # -----------------------------------------
 # HELPER FUNCTION: LOAD ZIP INTO LAYERS
@@ -196,35 +223,10 @@ def load_zip_into_layers(zip_path):
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-
-# -----------------------------------------
-# LOAD SHAPEFILES FROM GITHUB ON STARTUP
-# -----------------------------------------
-def load_github_shapefiles():
-    for layer_name, url in GITHUB_SHAPEFILES.items():
-        zip_path = os.path.join(UPLOAD_FOLDER, f"{layer_name}.zip")
-
-        # Download only if not already present
-        if not os.path.exists(zip_path):
-            try:
-                r = requests.get(url)
-                r.raise_for_status()
-                with open(zip_path, "wb") as f:
-                    f.write(r.content)
-                print(f"Downloaded {layer_name} from GitHub")
-            except Exception as e:
-                print(f"Failed to download {layer_name}: {e}")
-                continue
-
-        # Load into layers
-        load_zip_into_layers(zip_path)
-
-
 # -----------------------------------------
 # RUN ON STARTUP
 # -----------------------------------------
 load_github_shapefiles()
-
 
 # -----------------------------------------
 # RUN SERVER
