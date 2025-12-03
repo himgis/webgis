@@ -7,6 +7,18 @@ from flask import Flask, request, jsonify, render_template, session
 from flask_cors import CORS
 import geopandas as gpd
 
+# -----------------------------------------
+# CONFIGURATION
+# -----------------------------------------
+
+UPLOAD_FOLDER = "uploads"  # <-- DEFINE BEFORE USE
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+print("Current working directory:", os.getcwd())
+print("app.py absolute path:", os.path.abspath(__file__))
+print("UPLOAD_FOLDER (relative):", UPLOAD_FOLDER)
+print("UPLOAD_FOLDER absolute:", os.path.abspath(UPLOAD_FOLDER))
+
 app = Flask(__name__)
 app.secret_key = "YOUR_SECRET_KEY"  # change this
 CORS(app)
@@ -14,20 +26,17 @@ CORS(app)
 ADMIN_USER = "admin"
 ADMIN_PASS = "1234"
 
-# Persistent uploads folder
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
 layers = {}  # Stores all layers: name → {geojson, color, opacity, zip_path}
 
 
-# ---------------- Login Page ----------------
+# -----------------------------------------
+# LOGIN PAGE
+# -----------------------------------------
 @app.route("/login", methods=["GET"])
 def login_page():
     return render_template("login.html")
 
 
-# ---------------- Login API ----------------
 @app.route("/login", methods=["POST"])
 def login_api():
     data = request.get_json()
@@ -39,21 +48,24 @@ def login_api():
         return jsonify({"error": "Invalid username or password"}), 401
 
 
-# ---------------- Logout ----------------
 @app.route("/logout")
 def logout():
     session.pop("admin", None)
     return jsonify({"message": "Logged out"})
 
 
-# ---------------- Home / Map ----------------
+# -----------------------------------------
+# HOME PAGE (MAP)
+# -----------------------------------------
 @app.route("/")
 def index():
     is_admin = session.get("admin", False)
     return render_template("map.html", is_admin=is_admin)
 
 
-# ---------------- Upload Page ----------------
+# -----------------------------------------
+# UPLOAD PAGE (ADMIN ONLY)
+# -----------------------------------------
 @app.route("/upload_page")
 def upload_page():
     if not session.get("admin"):
@@ -61,7 +73,9 @@ def upload_page():
     return render_template("upload_page.html")
 
 
-# ---------------- Upload Shapefiles (Admin Only) ----------------
+# -----------------------------------------
+# UPLOAD SHAPEFILES
+# -----------------------------------------
 @app.route("/upload", methods=["POST"])
 def upload_shapefiles():
     if not session.get("admin"):
@@ -109,7 +123,7 @@ def upload_shapefiles():
                 "geojson": geojson_dict,
                 "color": color,
                 "opacity": 0.7,
-                "zip_path": zip_path  # store for persistence
+                "zip_path": zip_path
             }
 
             uploaded.append(layer_name)
@@ -117,20 +131,22 @@ def upload_shapefiles():
         except Exception as e:
             print("ERROR:", file.filename, e)
             failed.append(file.filename)
+
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
     return jsonify({"uploaded": uploaded, "failed": failed})
 
 
-# ---------------- Delete Layer (Admin Only) ----------------
+# -----------------------------------------
+# DELETE LAYER
+# -----------------------------------------
 @app.route("/delete/<layer_name>", methods=["DELETE"])
 def delete_layer(layer_name):
     if not session.get("admin"):
         return jsonify({"error": "Only admin can delete!"}), 403
 
     if layer_name in layers:
-        # Remove ZIP from disk
         zip_path = layers[layer_name].get("zip_path")
         if zip_path and os.path.exists(zip_path):
             os.remove(zip_path)
@@ -140,7 +156,9 @@ def delete_layer(layer_name):
         return jsonify({"error": "Layer not found"}), 404
 
 
-# ---------------- Send Layers to Frontend ----------------
+# -----------------------------------------
+# SEND LAYER INFO TO FRONTEND
+# -----------------------------------------
 @app.route("/layers")
 def get_layers():
     is_admin = session.get("admin", False)
@@ -150,8 +168,7 @@ def get_layers():
         all_bounds = []
         for lyr in layers.values():
             gdf = gpd.GeoDataFrame.from_features(lyr["geojson"]["features"], crs="EPSG:4326")
-            b = gdf.total_bounds
-            all_bounds.append(b)
+            all_bounds.append(gdf.total_bounds)
 
         minx = min(b[0] for b in all_bounds)
         miny = min(b[1] for b in all_bounds)
@@ -167,7 +184,9 @@ def get_layers():
     })
 
 
-# ---------------- Load existing shapefiles on server start ----------------
+# -----------------------------------------
+# LOAD EXISTING SHAPEFILES ON START
+# -----------------------------------------
 def load_existing_shapefiles():
     for f in os.listdir(UPLOAD_FOLDER):
         if f.lower().endswith(".zip"):
@@ -195,16 +214,19 @@ def load_existing_shapefiles():
                         "opacity": 0.7,
                         "zip_path": zip_path
                     }
+
             except Exception as e:
-                print("ERROR loading existing shapefile:", f, e)
+                print("ERROR loading:", f, e)
             finally:
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-# Load existing shapefiles when server starts
+# Load on startup
 load_existing_shapefiles()
 
 
+# -----------------------------------------
+# RUN SERVER
+# -----------------------------------------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=5000)
