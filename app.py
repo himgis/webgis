@@ -14,11 +14,6 @@ import geopandas as gpd
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-print("Current working directory:", os.getcwd())
-print("app.py absolute path:", os.path.abspath(__file__))
-print("UPLOAD_FOLDER (relative):", UPLOAD_FOLDER)
-print("UPLOAD_FOLDER absolute:", os.path.abspath(UPLOAD_FOLDER))
-
 app = Flask(__name__)
 app.secret_key = "YOUR_SECRET_KEY"  # change this
 CORS(app)
@@ -29,48 +24,12 @@ ADMIN_PASS = "1234"
 layers = {}  # Stores all layers: name → {geojson, color, opacity, zip_path}
 
 # -----------------------------------------
-# GITHUB CONFIG (auto-load all shapefile ZIPs)
+# GITHUB SHAPEFILES (raw URLs)
 # -----------------------------------------
-GITHUB_API_URL = "https://api.github.com/repos/himgis/webgis/contents/uploads"
-
-def list_github_shapefiles():
-    """Fetch all .zip files from GitHub uploads folder"""
-    try:
-        r = requests.get(GITHUB_API_URL)
-        r.raise_for_status()
-        data = r.json()
-        shapefiles = {}
-        for file in data:
-            if file['name'].lower().endswith(".zip"):
-                layer_name = file['name'].replace(".zip", "")
-                shapefiles[layer_name] = file['download_url']  # raw GitHub download link
-        return shapefiles
-    except Exception as e:
-        print("ERROR listing GitHub shapefiles:", e)
-        return {}
-
-def load_github_shapefiles():
-    shapefiles = list_github_shapefiles()
-    for layer_name, url in shapefiles.items():
-        zip_path = os.path.join(UPLOAD_FOLDER, f"{layer_name}.zip")
-
-        # Download only if not already present
-        if not os.path.exists(zip_path):
-            try:
-                r = requests.get(url)
-                r.raise_for_status()
-                with open(zip_path, "wb") as f:
-                    f.write(r.content)
-                print(f"Downloaded {layer_name} from GitHub")
-            except Exception as e:
-                print(f"Failed to download {layer_name}: {e}")
-                continue
-
-        # Load into layers
-        if load_zip_into_layers(zip_path):
-            print(f"Loaded {layer_name} into layers")
-        else:
-            print(f"Failed to load {layer_name}")
+GITHUB_SHAPEFILES = {
+    "Kheda_Web_Map1": "https://github.com/himgis/webgis/raw/master/uploads/Kheda_Web_Map1.zip",
+    "P_Location": "https://github.com/himgis/webgis/raw/master/uploads/P_Location.zip"
+}
 
 # -----------------------------------------
 # LOGIN PAGE
@@ -224,8 +183,23 @@ def load_zip_into_layers(zip_path):
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 # -----------------------------------------
-# RUN ON STARTUP
+# LOAD SHAPEFILES FROM GITHUB ON STARTUP
 # -----------------------------------------
+def load_github_shapefiles():
+    for layer_name, url in GITHUB_SHAPEFILES.items():
+        zip_path = os.path.join(UPLOAD_FOLDER, f"{layer_name}.zip")
+        if not os.path.exists(zip_path):
+            try:
+                r = requests.get(url)
+                r.raise_for_status()
+                with open(zip_path, "wb") as f:
+                    f.write(r.content)
+                print(f"Downloaded {layer_name} from GitHub")
+            except Exception as e:
+                print(f"Failed to download {layer_name}: {e}")
+                continue
+        load_zip_into_layers(zip_path)
+
 load_github_shapefiles()
 
 # -----------------------------------------
