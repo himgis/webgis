@@ -3,6 +3,7 @@ import tempfile
 import zipfile
 import shutil
 import random
+import requests
 from flask import Flask, request, jsonify, render_template, session
 from flask_cors import CORS
 import geopandas as gpd
@@ -10,8 +11,7 @@ import geopandas as gpd
 # -----------------------------------------
 # CONFIGURATION
 # -----------------------------------------
-
-UPLOAD_FOLDER = "uploads"  # <-- DEFINE BEFORE USE
+UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 print("Current working directory:", os.getcwd())
@@ -28,6 +28,14 @@ ADMIN_PASS = "1234"
 
 layers = {}  # Stores all layers: name → {geojson, color, opacity, zip_path}
 
+# -----------------------------------------
+# GITHUB SHAPEFILES CONFIG
+# -----------------------------------------
+# Format: { "layer_name": "raw_github_url_to_zip" }
+GITHUB_SHAPEFILES = {
+    "example_layer": "https://github.com/username/repo/raw/main/shapefile.zip"
+}
+
 
 # -----------------------------------------
 # LOGIN PAGE
@@ -40,7 +48,6 @@ def login_page():
 @app.route("/login", methods=["POST"])
 def login_api():
     data = request.get_json()
-
     if data["username"] == ADMIN_USER and data["password"] == ADMIN_PASS:
         session["admin"] = True
         return jsonify({"message": "Logged in"})
@@ -93,47 +100,13 @@ def upload_shapefiles():
             failed.append(file.filename)
             continue
 
-        # Save ZIP permanently
         zip_path = os.path.join(UPLOAD_FOLDER, file.filename)
         file.save(zip_path)
 
-        temp_dir = tempfile.mkdtemp()
-        try:
-            with zipfile.ZipFile(zip_path, "r") as z:
-                z.extractall(temp_dir)
-
-            shp_file = None
-            for root, dirs, files2 in os.walk(temp_dir):
-                for f in files2:
-                    if f.lower().endswith(".shp"):
-                        shp_file = os.path.join(root, f)
-                        break
-
-            if shp_file is None:
-                failed.append(file.filename)
-                continue
-
-            gdf = gpd.read_file(shp_file)
-            geojson_dict = gdf.to_crs("EPSG:4326").__geo_interface__
-
-            layer_name = os.path.splitext(file.filename)[0]
-            color = "#{:06x}".format(random.randint(0, 0xFFFFFF))
-
-            layers[layer_name] = {
-                "geojson": geojson_dict,
-                "color": color,
-                "opacity": 0.7,
-                "zip_path": zip_path
-            }
-
-            uploaded.append(layer_name)
-
-        except Exception as e:
-            print("ERROR:", file.filename, e)
+        if load_zip_into_layers(zip_path):
+            uploaded.append(os.path.splitext(file.filename)[0])
+        else:
             failed.append(file.filename)
-
-        finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
 
     return jsonify({"uploaded": uploaded, "failed": failed})
 
@@ -185,44 +158,72 @@ def get_layers():
 
 
 # -----------------------------------------
-# LOAD EXISTING SHAPEFILES ON START
+# HELPER FUNCTION: LOAD ZIP INTO LAYERS
 # -----------------------------------------
-def load_existing_shapefiles():
-    for f in os.listdir(UPLOAD_FOLDER):
-        if f.lower().endswith(".zip"):
-            zip_path = os.path.join(UPLOAD_FOLDER, f)
-            temp_dir = tempfile.mkdtemp()
+def load_zip_into_layers(zip_path):
+    temp_dir = tempfile.mkdtemp()
+    try:
+        with zipfile.ZipFile(zip_path, "r") as z:
+            z.extractall(temp_dir)
+
+        shp_file = None
+        for root, dirs, files2 in os.walk(temp_dir):
+            for f in files2:
+                if f.lower().endswith(".shp"):
+                    shp_file = os.path.join(root, f)
+                    break
+
+        if not shp_file:
+            return False
+
+        gdf = gpd.read_file(shp_file)
+        geojson_dict = gdf.to_crs("EPSG:4326").__geo_interface__
+        layer_name = os.path.splitext(os.path.basename(zip_path))[0]
+        color = "#{:06x}".format(random.randint(0, 0xFFFFFF))
+
+        layers[layer_name] = {
+            "geojson": geojson_dict,
+            "color": color,
+            "opacity": 0.7,
+            "zip_path": zip_path
+        }
+        return True
+
+    except Exception as e:
+        print("ERROR loading:", zip_path, e)
+        return False
+
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+# -----------------------------------------
+# LOAD SHAPEFILES FROM GITHUB ON STARTUP
+# -----------------------------------------
+def load_github_shapefiles():
+    for layer_name, url in GITHUB_SHAPEFILES.items():
+        zip_path = os.path.join(UPLOAD_FOLDER, f"{layer_name}.zip")
+
+        # Download only if not already present
+        if not os.path.exists(zip_path):
             try:
-                with zipfile.ZipFile(zip_path, "r") as z:
-                    z.extractall(temp_dir)
-
-                shp_file = None
-                for root, dirs, files2 in os.walk(temp_dir):
-                    for ff in files2:
-                        if ff.lower().endswith(".shp"):
-                            shp_file = os.path.join(root, ff)
-                            break
-
-                if shp_file:
-                    gdf = gpd.read_file(shp_file)
-                    geojson_dict = gdf.to_crs("EPSG:4326").__geo_interface__
-                    layer_name = os.path.splitext(f)[0]
-                    color = "#{:06x}".format(random.randint(0, 0xFFFFFF))
-                    layers[layer_name] = {
-                        "geojson": geojson_dict,
-                        "color": color,
-                        "opacity": 0.7,
-                        "zip_path": zip_path
-                    }
-
+                r = requests.get(url)
+                r.raise_for_status()
+                with open(zip_path, "wb") as f:
+                    f.write(r.content)
+                print(f"Downloaded {layer_name} from GitHub")
             except Exception as e:
-                print("ERROR loading:", f, e)
-            finally:
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                print(f"Failed to download {layer_name}: {e}")
+                continue
+
+        # Load into layers
+        load_zip_into_layers(zip_path)
 
 
-# Load on startup
-load_existing_shapefiles()
+# -----------------------------------------
+# RUN ON STARTUP
+# -----------------------------------------
+load_github_shapefiles()
 
 
 # -----------------------------------------
