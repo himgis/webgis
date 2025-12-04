@@ -28,7 +28,8 @@ layers = {}  # Stores all layers: name → {geojson, color, opacity, zip_path}
 # -----------------------------------------
 GITHUB_SHAPEFILES = {
     "P_Location": "https://github.com/himgis/webgis/raw/master/uploads/P_Location.zip",
-    "Kheda_Web_Map1": "https://github.com/himgis/webgis/raw/master/uploads/Kheda_Web_Map1.zip"
+    "MU1": "https://github.com/himgis/webgis/raw/master/uploads/MU1.zip",
+     "TA1": "https://github.com/himgis/webgis/raw/master/uploads/TA1.zip"
 }
 # -----------------------------------------
 # LOGIN PAGE
