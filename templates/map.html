@@ -15,49 +15,62 @@
 
         /* ADMIN MENU */
         #adminMenu {
-            position:absolute; top:10px; left:10px;
-            background:white; padding:10px; border-radius:6px;
+            position:absolute;
+            top:10px;
+            left:10px;
+            background:white;
+            padding:10px;
+            border-radius:6px;
             box-shadow:0 2px 10px rgba(0,0,0,0.3);
-            z-index:1500; font-family:Roboto,sans-serif;
+            z-index:1500;
+            font-family:Roboto,sans-serif;
             display:none;
+        }
+        #adminMenu a, #adminMenu button {
+            display:block;
+            margin:5px 0;
+            padding:8px 10px;
+            background:#4285f4;
+            color:white;
+            border:none;
+            border-radius:5px;
+            text-decoration:none;
+            font-size:14px;
+            cursor:pointer;
         }
 
         .style-panel {
-            position:absolute; top:10px; right:10px;
-            background:white; padding:15px;
+            position:absolute; top:10px; right:10px; background:white; padding:15px;
             border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.3);
-            z-index:1000; width:280px;
+            z-index:1000; width:280px; font-family:Roboto,sans-serif;
         }
 
         .layer-panel {
-            position:absolute; bottom:10px; left:10px;
-            background:white; padding:12px;
+            position:absolute; bottom:10px; left:10px; background:white; padding:12px;
             border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.3);
             z-index:1000; width:260px; max-height:70vh;
-            overflow-y:auto;
+            overflow-y:auto; font-family:Roboto,sans-serif; font-size:14px;
         }
 
-        .panel h3 {
-            margin:0 0 10px 0; background:#4285f4; color:white;
-            padding:8px 12px; border-radius:5px;
-        }
+        .panel h3 { margin:0 0 10px 0; background:#4285f4; color:white; padding:8px 12px; border-radius:5px; font-size:15px }
+        .slider { margin:12px 0 }
+        label { display:block; margin-bottom:5px; font-weight:bold; font-size:14px }
+        input[type=range]{ width:100% }
+        .val { font-size:12px; text-align:right; margin-top:3px; color:#555 }
 
         .layer-item {
-            padding:6px 5px; border-bottom:1px solid #eee;
-            display:flex; justify-content:space-between;
-            align-items:center; user-select:none;
+            padding:8px 5px; border-bottom:1px solid #eee; 
+            display:flex; align-items:center; 
+            justify-content:space-between;
+            user-select:none;
         }
-
-        .layer-tools button {
-            margin-left:4px;
+        .layer-item input { margin-right:10px; cursor:pointer }
+        .delete-btn {
+            color:red;
             cursor:pointer;
-            border:none;
-            background:#eee;
-            padding:4px 6px;
-            border-radius:4px;
+            font-weight:bold;
+            margin-left:5px;
         }
-
-        .delete-btn { color:red; cursor:pointer; margin-left:6px; }
     </style>
 </head>
 <body>
@@ -73,209 +86,255 @@
 <!-- Style Panel -->
 <div class="panel style-panel">
     <h3>Layer Style</h3>
-
-    <label>Line Weight: <span id="wVal">3</span></label>
-    <input type="range" id="weight" min="1" max="10" value="3">
-
-    <label>Fill Opacity: <span id="oVal">0.05</span></label>
-    <input type="range" id="opacity" min="0" max="1" step="0.05" value="0.05">
-
-    <label>Point Size: <span id="rVal">8</span></label>
-    <input type="range" id="radius" min="4" max="20" value="8">
+    <div class="slider">
+        <label>Line Weight: <span id="wVal">3</span> px</label>
+        <input type="range" id="weight" min="1" max="10" value="3">
+    </div>
+    <div class="slider">
+        <label>Fill Opacity: <span id="oVal">0.05</span></label>
+        <input type="range" id="opacity" min="0" max="1" step="0.05" value="0.05">
+    </div>
+    <div class="slider">
+        <label>Point Size: <span id="rVal">8</span> px</label>
+        <input type="range" id="radius" min="4" max="20" value="8">
+    </div>
 </div>
 
 <!-- Layers Panel -->
 <div class="panel layer-panel">
     <h3>Layers</h3>
-    <div id="layerList"><em>Loading layers...</em></div>
+    <div id="layerList">
+        <em>Loading layers...</em>
+    </div>
 </div>
 
 <script>
 const map = L.map('map').setView([22.5, 73.0], 7);
-
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-L.control.locate({
-    position:"topleft",
-    icon:"fa fa-location-crosshairs",
-    setView:"untilPanOrZoom",
-    locateOptions:{enableHighAccuracy:true}
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-function logout(){ fetch("/logout").then(()=>location.reload()); }
+L.control.locate({
+    position: 'topleft',
+    icon: 'fa fa-location-crosshairs fa-2x',
+    setView: 'untilPanOrZoom',
+    locateOptions: { enableHighAccuracy: true, watch: true }
+}).addTo(map);
 
+function logout() { fetch("/logout").then(() => location.reload()); }
+
+let firstLoad = true;
+let previousLayerNames = [];
 let allLayers = {};
 let layerVisibility = {};
-let layerOrder = [];   // ⬅ store layer order
-let previousLayerNames = [];
 let isAdmin = false;
 
-let styleConfig = { weight:3, fillOpacity:0.05, radius:8 };
+const styleConfig = { weight: 3, fillOpacity: 0.05, radius: 8 };
 
 function updateDisplays() {
-    wVal.textContent = styleConfig.weight;
-    oVal.textContent = styleConfig.fillOpacity;
-    rVal.textContent = styleConfig.radius;
+    document.getElementById('wVal').textContent = styleConfig.weight;
+    document.getElementById('oVal').textContent = styleConfig.fillOpacity.toFixed(2);
+    document.getElementById('rVal').textContent = styleConfig.radius;
 }
 
-["weight","opacity","radius"].forEach(id=>{
-    document.getElementById(id).oninput=e=>{
-        styleConfig[id==="opacity"?"fillOpacity":id]=+e.target.value;
-        updateDisplays();
-        Object.values(allLayers).forEach(layer=>{
-            layer.eachLayer(l=>{
-                const c=l.feature.properties._color;
-                const st={color:c,fillColor:c,weight:styleConfig.weight,fillOpacity:styleConfig.fillOpacity};
-                if(l.setStyle) l.setStyle(st);
-                if(l.setRadius) l.setRadius(styleConfig.radius);
-            });
+function applyGlobalStyle() {
+    Object.values(allLayers).forEach(layer => {
+        layer.eachLayer(l => {
+            const c = l.feature.properties._color;
+            const st = { color: c, fillColor: c, weight: styleConfig.weight, fillOpacity: styleConfig.fillOpacity };
+            if (l.setStyle) l.setStyle(st);
+            if (l.setRadius) l.setRadius(styleConfig.radius);
         });
+    });
+}
+
+['weight','opacity','radius'].forEach(id => {
+    document.getElementById(id).oninput = e => {
+        styleConfig[id === 'opacity' ? 'fillOpacity' : id] = +e.target.value;
+        updateDisplays();
+        applyGlobalStyle();
     };
 });
 
-// DELETE LAYER
-function deleteLayer(name){
-    if(!confirm(`Delete "${name}"?`)) return;
-    fetch(`/delete/${encodeURIComponent(name)}`,{method:"DELETE"})
-        .then(r=>r.json()).then(d=>{
-            if(d.message){
+function deleteLayer(name) {
+    if (!confirm(`Delete layer "${name}"?`)) return;
+    fetch(`/delete/${encodeURIComponent(name)}`, { method: 'DELETE' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.message) {
+                if (allLayers[name]) map.removeLayer(allLayers[name]);
+                delete allLayers[name];
+                delete layerVisibility[name];
+                loadLayers();
+            } else {
+                alert(data.error || "Failed to delete");
+            }
+        });
+}
+
+async function loadLayers() {
+    try {
+        const res = await fetch('/layers');
+        const data = await res.json();
+
+        isAdmin = data.is_admin;
+        document.getElementById("adminMenu").style.display = isAdmin ? "block" : "none";
+
+        const currentNames = Object.keys(data.layers);
+        const newLayers = currentNames.filter(x => !previousLayerNames.includes(x));
+
+        Object.keys(allLayers).forEach(name => {
+            if (!currentNames.includes(name)) {
                 map.removeLayer(allLayers[name]);
                 delete allLayers[name];
-                layerOrder = layerOrder.filter(n => n!==name);
-                loadLayers();
+                delete layerVisibility[name];
             }
         });
-}
 
-// 🔥 MOVE LAYER (UP / DOWN)
-function moveLayer(name, direction) {
-    let i = layerOrder.indexOf(name);
-    let j = i + direction;
-    if(j < 0 || j >= layerOrder.length) return;
+        for (const [name, info] of Object.entries(data.layers)) {
+            const geojson = info.geojson;
+            const color = info.color;
 
-    // Swap
-    [layerOrder[i], layerOrder[j]] = [layerOrder[j], layerOrder[i]];
-
-    // Reorder on map
-    map.eachLayer(l => { if(l !== baseLayer) map.removeLayer(l); });
-
-    layerOrder.forEach(n => {
-        if(allLayers[n] && layerVisibility[n] !== false) {
-            allLayers[n].addTo(map);
-        }
-    });
-
-    updateLayerCheckboxes(layerOrder);
-}
-
-// LOAD LAYERS
-async function loadLayers(){
-    const res = await fetch("/layers");
-    const data = await res.json();
-
-    isAdmin = data.is_admin;
-    adminMenu.style.display = isAdmin ? "block" : "none";
-
-    let names = Object.keys(data.layers);
-
-    // Initialize order only first time
-    if (layerOrder.length === 0) layerOrder = [...names];
-
-    // Remove missing layers
-    previousLayerNames.forEach(n=>{
-        if(!names.includes(n)){
-            map.removeLayer(allLayers[n]);
-            delete allLayers[n];
-            layerOrder = layerOrder.filter(x => x !== n);
-        }
-    });
-
-    for(const [name,info] of Object.entries(data.layers)){
-        const geojson = info.geojson;
-        const color = info.color;
-
-        geojson.features.forEach(f=>{
-            if(!f.properties) f.properties={};
-            f.properties._color=color;
-        });
-
-        if(!allLayers[name]){
-            let layer = L.geoJSON(geojson,{
-                style:{color,fillColor:color,weight:3,fillOpacity:0.05},
-                pointToLayer:(f,latlng)=>L.circleMarker(latlng,{radius:8,color,fillColor:color,fillOpacity:0.05}),
-                onEachFeature:(f,l)=>l.bindPopup(JSON.stringify(f.properties))
+            geojson.features.forEach(f => {
+                if (!f.properties) f.properties = {};
+                f.properties._color = color;
             });
 
-            allLayers[name]=layer;
-            if(layerVisibility[name]!==false){
-                layer.addTo(map);
-                layerVisibility[name]=true;
+            if (!allLayers[name]) {
+                const layer = L.geoJSON(geojson, {
+                    style: () => ({ color, weight: styleConfig.weight, fillColor: color, fillOpacity: styleConfig.fillOpacity }),
+                    pointToLayer: (f, latlng) =>
+                        L.circleMarker(latlng, { radius: styleConfig.radius, color, fillColor: color, fillOpacity: styleConfig.fillOpacity, weight: styleConfig.weight }),
+                    onEachFeature: (f, l) => {
+                        let html = '<table style="font-size:13px;width:100%">';
+                        for (const [k,v] of Object.entries(f.properties)) {
+                            if (k !== '_color')
+                                html += `<tr><td style="font-weight:bold;padding:4px">${k}</td><td style="padding:4px">${v??''}</td></tr>`;
+                        }
+                        html += '</table>';
+                        l.bindPopup(html);
+                    }
+                });
+
+                if (layerVisibility[name] !== false) {
+                    layer.addTo(map);
+                    layerVisibility[name] = true;
+                }
+
+                allLayers[name] = layer;
             }
         }
-    }
 
-    updateLayerCheckboxes(layerOrder);
-    previousLayerNames = names;
+        updateLayerCheckboxes(currentNames);
+
+        if ((firstLoad || newLayers.length > 0) && Object.keys(allLayers).length > 0) {
+            const b = L.latLngBounds([]);
+            Object.values(allLayers).forEach(l => { try { b.extend(l.getBounds()); } catch {} });
+            if (b.isValid()) map.fitBounds(b);
+        }
+
+        firstLoad = false;
+        previousLayerNames = currentNames;
+
+    } catch (e) {
+        console.error("Error loading layers:", e);
+    }
 }
 
-// UPDATE UI LIST
-function updateLayerCheckboxes(names){
+/* ============================================
+   UPDATED WITH MOVE UP / MOVE DOWN BUTTONS
+   ============================================ */
+function updateLayerCheckboxes(names) {
     const div = document.getElementById("layerList");
-    div.innerHTML="";
+    div.innerHTML = "";
 
-    names.forEach(name=>{
-        const row=document.createElement("div");
-        row.className="layer-item";
+    if (names.length === 0) {
+        div.innerHTML = "<em>No layers</em>";
+        return;
+    }
 
-        // Left: checkbox + name
-        const left=document.createElement("span");
-        const cb=document.createElement("input");
-        cb.type="checkbox";
-        cb.checked = layerVisibility[name] !== false;
-        cb.onchange=()=>{
-            layerVisibility[name]=cb.checked;
-            cb.checked ? allLayers[name].addTo(map) : map.removeLayer(allLayers[name]);
+    names.forEach((name, index) => {
+        const visible = layerVisibility[name] !== false;
+
+        const row = document.createElement("div");
+        row.className = "layer-item";
+
+        const left = document.createElement("span");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = visible;
+        cb.onchange = () => {
+            layerVisibility[name] = cb.checked;
+            cb.checked ? map.addLayer(allLayers[name]) : map.removeLayer(allLayers[name]);
         };
-        const label=document.createElement("label");
-        label.textContent=name;
+
+        const label = document.createElement("label");
+        label.textContent = name;
+
         left.appendChild(cb);
         left.appendChild(label);
-
         row.appendChild(left);
 
-        // Right: Tools (Admin only)
-        if(isAdmin){
-            const tools=document.createElement("span");
-            tools.className="layer-tools";
+        if (isAdmin) {
+            const controls = document.createElement("span");
 
-            const up=document.createElement("button");
-            up.textContent="⬆️";
-            up.onclick = ()=>moveLayer(name, -1);
+            const up = document.createElement("span");
+            up.textContent = "⬆️";
+            up.style.cursor = "pointer";
+            up.style.marginLeft = "8px";
+            up.onclick = () => moveLayer(name, -1);
+            controls.appendChild(up);
 
-            const down=document.createElement("button");
-            down.textContent="⬇️";
-            down.onclick = ()=>moveLayer(name, +1);
+            const down = document.createElement("span");
+            down.textContent = "⬇️";
+            down.style.cursor = "pointer";
+            down.style.marginLeft = "8px";
+            down.onclick = () => moveLayer(name, 1);
+            controls.appendChild(down);
 
-            const del=document.createElement("span");
-            del.className="delete-btn";
-            del.textContent="🗑️";
-            del.onclick = ()=>deleteLayer(name);
+            const del = document.createElement("span");
+            del.className = "delete-btn";
+            del.textContent = "🗑️";
+            del.style.marginLeft = "8px";
+            del.onclick = () => deleteLayer(name);
+            controls.appendChild(del);
 
-            tools.appendChild(up);
-            tools.appendChild(down);
-            tools.appendChild(del);
-
-            row.appendChild(tools);
+            row.appendChild(controls);
         }
 
         div.appendChild(row);
     });
 }
 
-// AUTO REFRESH
-loadLayers();
-setInterval(loadLayers,3000);
-</script>
+/* ============================================
+   MOVE LAYER UP / DOWN
+   ============================================ */
+function moveLayer(name, direction) {
+    const names = Object.keys(allLayers);
+    let index = names.indexOf(name);
+    let newIndex = index + direction;
 
+    if (newIndex < 0 || newIndex >= names.length) return;
+
+    [names[index], names[newIndex]] = [names[newIndex], names[index]];
+
+    const reordered = {};
+    names.forEach(n => reordered[n] = allLayers[n]);
+    allLayers = reordered;
+
+    map.eachLayer(l => {
+        if (l instanceof L.GeoJSON) map.removeLayer(l);
+    });
+
+    names.forEach(n => {
+        if (layerVisibility[n] !== false) map.addLayer(allLayers[n]);
+    });
+
+    updateLayerCheckboxes(names);
+}
+
+loadLayers();
+setInterval(loadLayers, 3000);
+</script>
 </body>
 </html>
