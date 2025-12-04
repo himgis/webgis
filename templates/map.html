@@ -125,7 +125,7 @@ let firstLoad = true;
 let previousLayerNames = [];
 let allLayers = {};
 let layerVisibility = {};
-let isAdmin = false;  // track admin status
+let isAdmin = false;
 
 const styleConfig = { weight: 3, fillOpacity: 0.05, radius: 8 };
 
@@ -164,11 +164,78 @@ function deleteLayer(name) {
                 if (allLayers[name]) map.removeLayer(allLayers[name]);
                 delete allLayers[name];
                 delete layerVisibility[name];
-                loadLayers(); // refresh list
+                loadLayers();
             } else {
                 alert(data.error || "Failed to delete");
             }
         });
+}
+
+/* -----------------------------
+     LAYER SWITCH BUTTON (NEW)
+------------------------------*/
+const layerSwitchBtn = L.control({ position: "topleft" });
+
+layerSwitchBtn.onAdd = function () {
+    const div = L.DomUtil.create("div", "layer-switch-btn");
+    div.innerHTML = `
+        <button id="toggleLayerMenu" 
+            style="background:white;border:1px solid #aaa;padding:6px 10px;border-radius:5px;
+                   cursor:pointer;font-size:14px;box-shadow:0 1px 5px rgba(0,0,0,0.3);">
+            Layers ▼
+        </button>
+        <div id="layerMenuPopup"
+            style="display:none;position:absolute;top:40px;left:0;background:white;padding:10px;
+                   border-radius:6px;width:180px;max-height:250px;overflow-y:auto;
+                   box-shadow:0 2px 8px rgba(0,0,0,0.3);z-index:2000;">
+        </div>
+    `;
+    return div;
+};
+layerSwitchBtn.addTo(map);
+
+// close/open popup
+document.addEventListener("click", (e) => {
+    const btn = document.getElementById("toggleLayerMenu");
+    const menu = document.getElementById("layerMenuPopup");
+
+    if (btn.contains(e.target)) {
+        menu.style.display = menu.style.display === "block" ? "none" : "block";
+    } else if (!menu.contains(e.target)) {
+        menu.style.display = "none";
+    }
+});
+
+// update popup menu
+function updateLayerSwitcherMenu(names) {
+    const menu = document.getElementById("layerMenuPopup");
+    if (!menu) return;
+
+    menu.innerHTML = "";
+
+    names.forEach(name => {
+        const visible = layerVisibility[name] !== false;
+
+        const row = document.createElement("div");
+        row.style.marginBottom = "8px";
+
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = visible;
+        cb.style.marginRight = "6px";
+
+        cb.onchange = () => {
+            layerVisibility[name] = cb.checked;
+            cb.checked ? map.addLayer(allLayers[name]) : map.removeLayer(allLayers[name]);
+        };
+
+        const label = document.createElement("span");
+        label.textContent = name;
+
+        row.appendChild(cb);
+        row.appendChild(label);
+        menu.appendChild(row);
+    });
 }
 
 async function loadLayers() {
@@ -182,7 +249,6 @@ async function loadLayers() {
         const currentNames = Object.keys(data.layers);
         const newLayers = currentNames.filter(x => !previousLayerNames.includes(x));
 
-        // REMOVE deleted layers
         Object.keys(allLayers).forEach(name => {
             if (!currentNames.includes(name)) {
                 map.removeLayer(allLayers[name]);
@@ -191,7 +257,6 @@ async function loadLayers() {
             }
         });
 
-        // ADD layers but DO NOT recreate existing ones
         for (const [name, info] of Object.entries(data.layers)) {
             const geojson = info.geojson;
             const color = info.color;
@@ -208,10 +273,12 @@ async function loadLayers() {
                         L.circleMarker(latlng, { radius: styleConfig.radius, color, fillColor: color, fillOpacity: styleConfig.fillOpacity, weight: styleConfig.weight }),
                     onEachFeature: (f, l) => {
                         let html = '<table style="font-size:13px;width:100%">';
+
                         for (const [k,v] of Object.entries(f.properties)) {
                             if (k !== '_color')
                                 html += `<tr><td style="font-weight:bold;padding:4px">${k}</td><td style="padding:4px">${v??''}</td></tr>`;
                         }
+
                         html += '</table>';
                         l.bindPopup(html);
                     }
@@ -227,6 +294,7 @@ async function loadLayers() {
         }
 
         updateLayerCheckboxes(currentNames);
+        updateLayerSwitcherMenu(currentNames);  // NEW LINE
 
         if ((firstLoad || newLayers.length > 0) && Object.keys(allLayers).length > 0) {
             const b = L.latLngBounds([]);
