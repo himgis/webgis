@@ -24,19 +24,12 @@ ADMIN_PASS = "1234"
 layers = {}  # Stores all layers: name → {geojson, color, opacity, zip_path}
 
 # -----------------------------------------
-# LAYER ORDER (decide order here)
-# -----------------------------------------
-LAYER_ORDER = ["P_Location", "MU1", "TA1"]  # first = bottom, last = top
-
-# -----------------------------------------
 # GITHUB SHAPEFILES (raw URLs)
 # -----------------------------------------
 GITHUB_SHAPEFILES = {
     "P_Location": "https://github.com/himgis/webgis/raw/master/uploads/P_Location.zip",
-    "MU1": "https://github.com/himgis/webgis/raw/master/uploads/MU1.zip",
     "TA1": "https://github.com/himgis/webgis/raw/master/uploads/TA1.zip"
 }
-
 # -----------------------------------------
 # LOGIN PAGE
 # -----------------------------------------
@@ -129,7 +122,6 @@ def delete_layer(layer_name):
 def get_layers():
     is_admin = session.get("admin", False)
 
-    # Calculate combined bounds
     final_bounds = None
     if layers:
         all_bounds = []
@@ -141,14 +133,12 @@ def get_layers():
         miny = min(b[1] for b in all_bounds)
         maxx = max(b[2] for b in all_bounds)
         maxy = max(b[3] for b in all_bounds)
-        final_bounds = [[miny, minx], [maxy, maxx]]
 
-    # Return layers in the order defined in LAYER_ORDER
-    ordered_layers = {name: layers[name] for name in LAYER_ORDER if name in layers}
+        final_bounds = [[miny, minx], [maxy, maxx]]
 
     return jsonify({
         "is_admin": is_admin,
-        "layers": ordered_layers,
+        "layers": layers,
         "bounds": final_bounds
     })
 
@@ -195,11 +185,7 @@ def load_zip_into_layers(zip_path):
 # LOAD SHAPEFILES FROM GITHUB ON STARTUP
 # -----------------------------------------
 def load_github_shapefiles():
-    for layer_name in LAYER_ORDER:  # load in defined order
-        url = GITHUB_SHAPEFILES.get(layer_name)
-        if not url:
-            continue
-
+    for layer_name, url in GITHUB_SHAPEFILES.items():
         zip_path = os.path.join(UPLOAD_FOLDER, f"{layer_name}.zip")
         if not os.path.exists(zip_path):
             try:
