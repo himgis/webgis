@@ -28,7 +28,7 @@ layers = {}  # Stores all layers: name → {geojson, color, opacity, zip_path}
 # -----------------------------------------
 GITHUB_SHAPEFILES = {
     "MU": "https://github.com/himgis/webgis/raw/master/uploads/MU.zip",
-    "Kheda_Web_Map1": "https://github.com/himgis/webgis/raw/master/uploads/Kheda_Web_Map1.zip",
+    "Taluka": "https://github.com/himgis/webgis/raw/master/uploads/Taluka.zip",
     "P_Location": "https://github.com/himgis/webgis/raw/master/uploads/P_Location.zip"
 }
 # -----------------------------------------
